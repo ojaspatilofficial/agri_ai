@@ -16,6 +16,10 @@ function ActionsLog() {
     green_tokens: 0
   });
 
+
+
+
+  
   useEffect(() => {
     fetchActions();
     // Auto-refresh every 30 seconds

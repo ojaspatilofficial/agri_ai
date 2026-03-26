@@ -12,6 +12,10 @@ function Login({ onLogin }) {
     phone: '',
     language: 'en'
   });
+
+
+
+
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -108,7 +112,7 @@ function Login({ onLogin }) {
         };
         localStorage.setItem('farmer', JSON.stringify(userData));
         localStorage.setItem('session_id', data.session_id);
-        
+
         onLogin(userData);
         setLoading(false);
       }
@@ -242,7 +246,7 @@ function Login({ onLogin }) {
               <input
                 type="text"
                 value={formData.name}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="Ravi Kumar"
                 className="form-input"
                 disabled={loading}
@@ -255,7 +259,7 @@ function Login({ onLogin }) {
             <input
               type="text"
               value={formData.farmerId}
-              onChange={(e) => setFormData({...formData, farmerId: e.target.value.toUpperCase()})}
+              onChange={(e) => setFormData({ ...formData, farmerId: e.target.value.toUpperCase() })}
               placeholder="FARM001"
               className="form-input"
               disabled={loading}
@@ -269,7 +273,7 @@ function Login({ onLogin }) {
                 <input
                   type="email"
                   value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder="farmer@example.com"
                   className="form-input"
                   disabled={loading}
@@ -281,7 +285,7 @@ function Login({ onLogin }) {
                 <input
                   type="tel"
                   value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   placeholder="+919876543210"
                   className="form-input"
                   disabled={loading}
@@ -295,7 +299,7 @@ function Login({ onLogin }) {
             <input
               type="password"
               value={formData.password}
-              onChange={(e) => setFormData({...formData, password: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               placeholder="••••••••"
               className="form-input"
               disabled={loading}
@@ -308,7 +312,7 @@ function Login({ onLogin }) {
               <input
                 type="password"
                 value={formData.confirmPassword}
-                onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                 placeholder="••••••••"
                 className="form-input"
                 disabled={loading}
@@ -320,7 +324,7 @@ function Login({ onLogin }) {
             <label>{t.language}</label>
             <select
               value={formData.language}
-              onChange={(e) => setFormData({...formData, language: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, language: e.target.value })}
               className="form-input"
               disabled={loading}
             >
@@ -334,13 +338,13 @@ function Login({ onLogin }) {
           {success && <div className="success-message">✅ {success}</div>}
 
           <button type="submit" className="login-button" disabled={loading}>
-            {loading ? '⏳ Processing...' : 
-             mode === 'login' ? `🚀 ${t.loginButton}` : `✨ ${t.registerButton}`}
+            {loading ? '⏳ Processing...' :
+              mode === 'login' ? `🚀 ${t.loginButton}` : `✨ ${t.registerButton}`}
           </button>
 
           <div className="switch-mode">
-            <button 
-              type="button" 
+            <button
+              type="button"
               onClick={() => {
                 setMode(mode === 'login' ? 'register' : 'login');
                 setError('');
