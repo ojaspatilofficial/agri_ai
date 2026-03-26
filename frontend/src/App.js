@@ -92,6 +92,7 @@ function App() {
     }
   };
 
+  
   // Show login page if not authenticated
   if (!farmer) {
     return <Login onLogin={handleLogin} />;
