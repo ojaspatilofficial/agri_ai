@@ -15,6 +15,13 @@ import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:8000';
 
+
+
+
+
+
+
+
 const getFarmIdFromFarmer = (farmerData) => {
   if (!farmerData) return 'FARM001';
   return farmerData.farmerId || farmerData.farmer_id || 'FARM001';

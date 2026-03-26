@@ -17,6 +17,10 @@ function CropsManager() {
     status: 'growing'
   });
 
+
+
+
+  
   useEffect(() => {
     fetchCrops();
     // Auto-refresh every 30 seconds
