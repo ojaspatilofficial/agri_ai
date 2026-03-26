@@ -3,7 +3,6 @@
 ## System Overview
 
 The Smart Farming Agentic AI System is a comprehensive precision agriculture platform powered by 17 specialized AI agents working in coordination to optimize farming operations.
-
 ## Architecture Diagram
 
 ```
@@ -198,6 +197,7 @@ POST /voice_command       - Voice assistant
 - Intent detection
 - Voice-friendly responses
 - Action execution
+
 
 ### 4. Data Layer
 
