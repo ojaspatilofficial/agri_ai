@@ -145,6 +145,7 @@ POST /voice_command       - Voice assistant
 - Harvest date prediction
 - Market value estimation
 - Confidence scoring
+- 
 
 #### Economics & Government Agents
 
