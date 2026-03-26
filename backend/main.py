@@ -398,6 +398,7 @@ async def get_forecast(location: str = "Delhi", hours: int = 24):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 # Yield Prediction
 @app.post("/predict_yield")
 async def predict_yield(request: YieldPredictionRequest):
