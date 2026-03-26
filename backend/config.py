@@ -54,6 +54,7 @@ def get_openweather_api_key():
     
     return ""
 
+
 # API Configuration
 API_CONFIG = {
     "data_gov_api_key": get_data_gov_api_key(),
