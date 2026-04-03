@@ -140,7 +140,7 @@ async def system_status():
             "market": bool(API_CONFIG.get('data_gov_api_key')),
             "weather": bool(API_CONFIG.get('openweather_api_key')),
             "grok_vision": bool(API_CONFIG.get('grok_api_key')),
-            "ollama": True
+            "ollama": lead_agent.llm.is_available
         },
         "database": API_CONFIG["database_url"].split(":")[0]
     }

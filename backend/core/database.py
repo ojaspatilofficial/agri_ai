@@ -52,6 +52,19 @@ class AgentRecommendation(Base):
     llm_source: Mapped[str] = mapped_column(String(100), nullable=True) # e.g. "mistral:latest"
     metadata_json: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=True)
 
+class LLMConversation(Base):
+    __tablename__ = "llm_conversation_history"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    farm_id: Mapped[str] = mapped_column(String(50), index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    prompt_sent: Mapped[Text] = mapped_column(Text)
+    response_received: Mapped[Text] = mapped_column(Text)
+    model_used: Mapped[str] = mapped_column(String(100))
+    context_used: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=True)
+    latency_ms: Mapped[float] = mapped_column(Float, nullable=True)
+
 # ── Database Class ──────────────────────────────────────────────────
 
 class AsyncDatabase:
@@ -145,3 +158,17 @@ class AsyncDatabase:
                     "status": r.status
                 } for r in recs
             ]
+
+    async def store_llm_conversation(self, farm_id: str, prompt_sent: str, response_received: str, model_used: str, context_used: Dict[str, Any], latency_ms: float = None):
+        """Log LLM conversation for audit/history"""
+        async with self.session_factory() as session:
+            conv = LLMConversation(
+                farm_id=farm_id,
+                prompt_sent=prompt_sent,
+                response_received=response_received,
+                model_used=model_used,
+                context_used=context_used,
+                latency_ms=latency_ms
+            )
+            session.add(conv)
+            await session.commit()

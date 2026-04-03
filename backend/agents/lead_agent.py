@@ -8,6 +8,8 @@ from datetime import datetime
 from typing import Dict, Any, List
 import json
 import asyncio
+from agents.llm_orchestrator import LLMOrchestrator
+from config import API_CONFIG
 
 class LeadAgent:
     def __init__(self, database):
@@ -19,6 +21,10 @@ class LeadAgent:
             'medium': ['fertilizer', 'market_forecast', 'sustainability'],
             'low': ['blockchain', 'voice_assistant', 'drone_satellite']
         }
+        self.llm = LLMOrchestrator(
+            base_url=API_CONFIG.get("ollama_base_url", "http://localhost:11434"),
+            model=API_CONFIG.get("ollama_model", "mistral:latest")
+        )
 
     async def orchestrate_all_agents(self, farm_id: str) -> Dict[str, Any]:
         """
@@ -104,6 +110,29 @@ class LeadAgent:
             # Priority Actions
             priority = self._determine_priority_actions(results["agent_results"])
             results["priority_actions"] = priority
+
+            # ── 6. Unified AI Advice (The "Interacting agents" part) ──
+            # Prepare context for LLM
+            shared_context = {
+                "soil_moisture": latest_sensors.get("soil_moisture"),
+                "temperature": latest_sensors.get("air_temperature"),
+                "humidity": latest_sensors.get("humidity"),
+                "rain_in_24h": weather_forecast.get("rain_probability", 0) > 50,
+                "disease_alert": results["agent_results"].get("disease", {}).get("disease_detected", False),
+                "risk_level": results["agent_results"].get("disease", {}).get("risk_level", "low"),
+                "fertilizer_advice": results["agent_results"].get("fertilizer", {}).get("recommendation_text", "")
+            }
+
+            # Get unified advice (calls Ollama/Mistral)
+            unified_advice = await self.llm.generate_unified_advice(
+                shared_context=shared_context,
+                farm_id=farm_id,
+                db=self.db
+            )
+            
+            results["unified_advice"] = unified_advice
+            if unified_advice.get("source") == "llm":
+                results["global_recommendations"].insert(0, f"🤖 AI Insights: {unified_advice['advice'][:200]}...")
 
             # Store recommendations
             for rec in global_recs:
