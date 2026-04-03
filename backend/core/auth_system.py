@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import mapped_column, Mapped
 from sqlalchemy import String, Boolean, DateTime, select, update, Text
 from .database import Base, AsyncDatabase
-from ..config import DATABASE_URL
+from config import DATABASE_URL
 
 # ── Farmer Model ──────────────────────────────────────────────────
 

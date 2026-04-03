@@ -4,8 +4,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Float, DateTime, Text, ForeignKey, select, desc
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import String, Float, DateTime, Text, ForeignKey, select, desc, JSON
 from pathlib import Path
 
 # ── Base Model ──────────────────────────────────────────────────────
@@ -51,7 +50,7 @@ class AgentRecommendation(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending") # pending, applied, dismissed
     
     llm_source: Mapped[str] = mapped_column(String(100), nullable=True) # e.g. "mistral:latest"
-    metadata_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=True)
+    metadata_json: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=True)
 
 # ── Database Class ──────────────────────────────────────────────────
 
