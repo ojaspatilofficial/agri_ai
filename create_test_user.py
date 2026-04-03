@@ -4,48 +4,59 @@ Run this before trying to login
 """
 import sys
 import os
+import asyncio
+from pathlib import Path
 
 # Add backend to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
+backend_path = Path(__file__).resolve().parent / 'backend'
+sys.path.insert(0, str(backend_path))
 
-from core.auth_system import AuthenticationSystem
+from core.database import AsyncDatabase
+from core.auth_system import AuthSystem
+from config import DATABASE_URL
 
-def create_test_user():
+async def create_test_user():
     print("=" * 60)
     print("Creating Test User for Smart Farming AI")
     print("=" * 60)
     
-    # Initialize authentication system
-    auth = AuthenticationSystem()
+    # Initialize components
+    db = AsyncDatabase(DATABASE_URL)
+    await db.init_db()
+    auth = AuthSystem(db)
     
-    # Create test user
-    print("\n📝 Registering user: FARM001...")
-    result = auth.register_user(
-        farmer_id="FARM001",
-        password="secure123",
-        name="Ravi Kumar",
-        email="ravi@example.com",
-        phone="+919876543210",
-        language="en"
-    )
+    # Create test user data
+    user_data = {
+        "name": "Ravi Kumar",
+        "email": "ravi@example.com",
+        "phone": "+919876543210",
+        "password": "secure123",
+        "location": "Maharashtra, India",
+        "language": "en"
+    }
     
-    if result["success"]:
-        print("✅ SUCCESS!")
-        print(f"   {result['message']}")
-        print("\n🔑 Login Credentials:")
-        print("   Username: FARM001")
-        print("   Password: secure123")
-        print("\n✨ You can now login on the frontend!")
-    else:
-        print("❌ FAILED!")
-        print(f"   Error: {result.get('error', 'Unknown error')}")
+    print(f"\n📝 Registering user: {user_data['email']}...")
+    try:
+        result = await auth.register_farmer(user_data)
         
-        if "already exists" in result.get('error', ''):
+        if result["status"] == "success":
+            print("✅ SUCCESS!")
+            print(f"   Farmer ID: {result['farmer_id']}")
+            print("\n🔑 Login Credentials:")
+            print(f"   Email: {user_data['email']}")
+            print(f"   Password: {user_data['password']}")
+            print("\n✨ You can now login on the frontend!")
+        else:
+            print(f"❌ FAILED: {result.get('message', 'Unknown error')}")
+            
+    except Exception as e:
+        print(f"❌ ERROR: {str(e)}")
+        if "already registered" in str(e).lower():
             print("\n💡 User already exists! Try logging in with:")
-            print("   Username: FARM001")
-            print("   Password: secure123")
+            print(f"   Email: {user_data['email']}")
+            print(f"   Password: {user_data['password']}")
     
     print("\n" + "=" * 60)
 
 if __name__ == "__main__":
-    create_test_user()
+    asyncio.run(create_test_user())

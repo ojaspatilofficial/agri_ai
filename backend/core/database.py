@@ -1,314 +1,148 @@
-"""
-Database Manager - SQLite + JSON Hybrid Storage
-"""
-import sqlite3
-import json
 import os
+import asyncio
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import String, Float, DateTime, Text, ForeignKey, select, desc
+from sqlalchemy.dialects.postgresql import JSONB
+from pathlib import Path
 
-class Database:
-    def __init__(self, db_path: str = None):
-        if db_path is None:
-            # Get absolute path to database directory
-            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            db_dir = os.path.join(os.path.dirname(backend_dir), 'database')
-            os.makedirs(db_dir, exist_ok=True)
-            db_path = os.path.join(db_dir, 'farming_data.db')
-        self.db_path = db_path
-        self.init_database()
+# ── Base Model ──────────────────────────────────────────────────────
+class Base(DeclarativeBase):
+    pass
+
+# ── Models ─────────────────────────────────────────────────────────
+
+class SensorReading(Base):
+    __tablename__ = "sensor_readings"
     
-    def init_database(self):
-        """Initialize database tables"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # Sensor Data Table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS sensor_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                farm_id TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                soil_moisture REAL,
-                soil_ph REAL,
-                soil_temperature REAL,
-                air_temperature REAL,
-                humidity REAL,
-                rainfall REAL,
-                light_intensity REAL,
-                npk_nitrogen REAL,
-                npk_phosphorus REAL,
-                npk_potassium REAL
-            )
-        """)
-        
-        # Agent Recommendations Table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS recommendations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                farm_id TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                agent_name TEXT NOT NULL,
-                recommendation_type TEXT,
-                recommendation_text TEXT,
-                priority TEXT,
-                status TEXT DEFAULT 'pending'
-            )
-        """)
-        
-        # Crop Data Table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS crops (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                farm_id TEXT NOT NULL,
-                crop_type TEXT NOT NULL,
-                planted_date TEXT,
-                expected_harvest_date TEXT,
-                area_hectares REAL,
-                status TEXT DEFAULT 'growing'
-            )
-        """)
-        
-        # Actions Log Table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS actions_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                farm_id TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                action_type TEXT NOT NULL,
-                action_details TEXT,
-                green_tokens_earned INTEGER DEFAULT 0
-            )
-        """)
-        
-        conn.commit()
-        conn.close()
+    id: Mapped[int] = mapped_column(primary_key=True)
+    farm_id: Mapped[str] = mapped_column(String(50), index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     
-    def store_sensor_data(self, sensor_readings: List[Dict[str, Any]]):
-        """Store sensor data in database"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        for reading in sensor_readings:
-            cursor.execute("""
-                INSERT INTO sensor_data (
-                    farm_id, timestamp, soil_moisture, soil_ph, soil_temperature,
-                    air_temperature, humidity, rainfall, light_intensity,
-                    npk_nitrogen, npk_phosphorus, npk_potassium
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                reading.get('farm_id'),
-                reading.get('timestamp'),
-                reading.get('soil_moisture'),
-                reading.get('soil_ph'),
-                reading.get('soil_temperature'),
-                reading.get('air_temperature'),
-                reading.get('humidity'),
-                reading.get('rainfall'),
-                reading.get('light_intensity'),
-                reading.get('npk_nitrogen'),
-                reading.get('npk_phosphorus'),
-                reading.get('npk_potassium')
-            ))
-        
-        conn.commit()
-        conn.close()
+    # Soil Data
+    soil_moisture: Mapped[float] = mapped_column(Float)
+    soil_temperature: Mapped[float] = mapped_column(Float)
+    soil_ph: Mapped[float] = mapped_column(Float)
     
-    def get_latest_sensor_data(self, farm_id: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get latest sensor readings"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT * FROM sensor_data 
-            WHERE farm_id = ? 
-            ORDER BY timestamp DESC 
-            LIMIT ?
-        """, (farm_id, limit))
-        
-        rows = cursor.fetchall()
-        conn.close()
-        
-        return [dict(row) for row in rows]
+    # Nutrients
+    npk_nitrogen: Mapped[float] = mapped_column(Float)
+    npk_phosphorus: Mapped[float] = mapped_column(Float)
+    npk_potassium: Mapped[float] = mapped_column(Float)
     
-    def store_recommendation(self, farm_id: str, agent_name: str, 
-                            rec_type: str, rec_text: str, priority: str = "medium"):
-        """Store agent recommendation"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT INTO recommendations (
-                farm_id, timestamp, agent_name, recommendation_type,
-                recommendation_text, priority
-            ) VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            farm_id,
-            datetime.now().isoformat(),
-            agent_name,
-            rec_type,
-            rec_text,
-            priority
-        ))
-        
-        conn.commit()
-        conn.close()
+    # Environment
+    humidity: Mapped[float] = mapped_column(Float)
+    air_temperature: Mapped[float] = mapped_column(Float)
+    rainfall: Mapped[float] = mapped_column(Float, nullable=True)
+    light_intensity: Mapped[float] = mapped_column(Float, nullable=True)
+
+class AgentRecommendation(Base):
+    __tablename__ = "agent_recommendations"
     
-    def get_recommendations(self, farm_id: str, status: str = "pending", 
-                           limit: int = 20) -> List[Dict[str, Any]]:
-        """Get recommendations"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT * FROM recommendations 
-            WHERE farm_id = ? AND status = ?
-            ORDER BY timestamp DESC 
-            LIMIT ?
-        """, (farm_id, status, limit))
-        
-        rows = cursor.fetchall()
-        conn.close()
-        
-        return [dict(row) for row in rows]
+    id: Mapped[int] = mapped_column(primary_key=True)
+    farm_id: Mapped[str] = mapped_column(String(50), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     
-    def log_action(self, farm_id: str, action_type: str, 
-                   action_details: str, green_tokens: int = 0):
-        """Log farming action"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT INTO actions_log (
-                farm_id, timestamp, action_type, action_details, green_tokens_earned
-            ) VALUES (?, ?, ?, ?, ?)
-        """, (
-            farm_id,
-            datetime.now().isoformat(),
-            action_type,
-            action_details,
-            green_tokens
-        ))
-        
-        conn.commit()
-        conn.close()
+    agent_name: Mapped[str] = mapped_column(String(100))
+    recommendation_type: Mapped[str] = mapped_column(String(50)) # irrigation, fertilizer, pest, harvest
+    recommendation_text: Mapped[Text] = mapped_column(Text)
+    priority: Mapped[str] = mapped_column(String(20)) # critical, high, medium, low
+    status: Mapped[str] = mapped_column(String(20), default="pending") # pending, applied, dismissed
     
-    def get_actions_log(self, farm_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Get actions log"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT * FROM actions_log 
-            WHERE farm_id = ? 
-            ORDER BY timestamp DESC 
-            LIMIT ?
-        """, (farm_id, limit))
-        
-        rows = cursor.fetchall()
-        conn.close()
-        
-        return [dict(row) for row in rows]
-    
-    def add_crop(self, farm_id: str, crop_type: str, planted_date: str,
-                 expected_harvest_date: str, area_hectares: float, status: str = "growing"):
-        """Add new crop"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT INTO crops (
-                farm_id, crop_type, planted_date, expected_harvest_date, 
-                area_hectares, status
-            ) VALUES (?, ?, ?, ?, ?, ?)
-        """, (farm_id, crop_type, planted_date, expected_harvest_date, area_hectares, status))
-        
-        conn.commit()
-        crop_id = cursor.lastrowid
-        conn.close()
-        return crop_id
-    
-    def get_crops(self, farm_id: str, status: str = None) -> List[Dict[str, Any]]:
-        """Get all crops for a farm"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        if status:
-            cursor.execute("""
-                SELECT * FROM crops 
-                WHERE farm_id = ? AND status = ?
-                ORDER BY planted_date DESC
-            """, (farm_id, status))
+    llm_source: Mapped[str] = mapped_column(String(100), nullable=True) # e.g. "mistral:latest"
+    metadata_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=True)
+
+# ── Database Class ──────────────────────────────────────────────────
+
+class AsyncDatabase:
+    def __init__(self, database_url: str):
+        # Handle SQLite for local development
+        if database_url.startswith("sqlite"):
+            self.engine = create_async_engine(database_url)
         else:
-            cursor.execute("""
-                SELECT * FROM crops 
-                WHERE farm_id = ?
-                ORDER BY planted_date DESC
-            """, (farm_id,))
-        
-        rows = cursor.fetchall()
-        conn.close()
-        
-        return [dict(row) for row in rows]
-    
-    def update_crop_status(self, crop_id: int, status: str):
-        """Update crop status"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            UPDATE crops 
-            SET status = ?
-            WHERE id = ?
-        """, (status, crop_id))
-        
-        conn.commit()
-        conn.close()
-    
-    def delete_crop(self, crop_id: int):
-        """Delete crop"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("DELETE FROM crops WHERE id = ?", (crop_id,))
-        
-        conn.commit()
-        conn.close()
-    
-    def get_action_by_id(self, action_id: int) -> Dict[str, Any]:
-        """Get specific action by ID"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT * FROM actions_log WHERE id = ?", (action_id,))
-        row = cursor.fetchone()
-        conn.close()
-        
-        return dict(row) if row else None
-    
-    def delete_action(self, action_id: int):
-        """Delete action from log"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("DELETE FROM actions_log WHERE id = ?", (action_id,))
-        
-        conn.commit()
-        conn.close()
-    
-    def execute_query(self, query: str) -> List[Dict[str, Any]]:
-        """Execute custom SQL query"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        conn.close()
-        
-        return [dict(row) for row in rows]
+            self.engine = create_async_engine(database_url, pool_pre_ping=True)
+            
+        self.session_factory = async_sessionmaker(
+            self.engine, expire_on_commit=False, class_=AsyncSession
+        )
+
+    async def init_db(self):
+        """Create tables if they don't exist"""
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    async def store_sensor_data(self, readings: List[Dict[str, Any]]):
+        """Store new sensor readings"""
+        async with self.session_factory() as session:
+            for r in readings:
+                reading = SensorReading(
+                    farm_id=r.get("farm_id", "default_farm"),
+                    soil_moisture=r.get("soil_moisture", 0.0),
+                    soil_temperature=r.get("soil_temperature", 0.0),
+                    soil_ph=r.get("soil_ph", 7.0),
+                    npk_nitrogen=r.get("npk_nitrogen", 0.0),
+                    npk_phosphorus=r.get("npk_phosphorus", 0.0),
+                    npk_potassium=r.get("npk_potassium", 0.0),
+                    humidity=r.get("humidity", 0.0),
+                    air_temperature=r.get("air_temperature", 0.0),
+                    rainfall=r.get("rainfall"),
+                    light_intensity=r.get("light_intensity")
+                )
+                session.add(reading)
+            await session.commit()
+
+    async def get_latest_readings(self, farm_id: str, limit: int = 1) -> List[Dict[str, Any]]:
+        """Get latest sensor readings for a farm"""
+        async with self.session_factory() as session:
+            query = select(SensorReading).where(SensorReading.farm_id == farm_id).order_by(desc(SensorReading.timestamp)).limit(limit)
+            result = await session.execute(query)
+            readings = result.scalars().all()
+            return [
+                {
+                    "timestamp": r.timestamp.isoformat(),
+                    "soil_moisture": r.soil_moisture,
+                    "soil_temperature": r.soil_temperature,
+                    "soil_ph": r.soil_ph,
+                    "npk_nitrogen": r.npk_nitrogen,
+                    "npk_phosphorus": r.npk_phosphorus,
+                    "npk_potassium": r.npk_potassium,
+                    "humidity": r.humidity,
+                    "air_temperature": r.air_temperature,
+                    "rainfall": r.rainfall,
+                    "light_intensity": r.light_intensity
+                } for r in readings
+            ]
+
+    async def store_recommendation(self, rec: Dict[str, Any]):
+        """Store a new AI recommendation"""
+        async with self.session_factory() as session:
+            recommendation = AgentRecommendation(
+                farm_id=rec.get("farm_id", "default_farm"),
+                agent_name=rec.get("agent_name", "Unknown"),
+                recommendation_type=rec.get("recommendation_type", "general"),
+                recommendation_text=rec.get("recommendation_text", ""),
+                priority=rec.get("priority", "medium"),
+                llm_source=rec.get("llm_source"),
+                metadata_json=rec.get("metadata", {})
+            )
+            session.add(recommendation)
+            await session.commit()
+
+    async def get_recommendations(self, farm_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent recommendations"""
+        async with self.session_factory() as session:
+            query = select(AgentRecommendation).where(AgentRecommendation.farm_id == farm_id).order_by(desc(AgentRecommendation.created_at)).limit(limit)
+            result = await session.execute(query)
+            recs = result.scalars().all()
+            return [
+                {
+                    "id": r.id,
+                    "timestamp": r.created_at.isoformat(),
+                    "agent_name": r.agent_name,
+                    "recommendation_type": r.recommendation_type,
+                    "recommendation_text": r.recommendation_text,
+                    "priority": r.priority,
+                    "status": r.status
+                } for r in recs
+            ]
