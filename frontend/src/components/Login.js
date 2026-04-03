@@ -12,10 +12,6 @@ function Login({ onLogin }) {
     phone: '',
     language: 'en'
   });
-
-
-
-
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);

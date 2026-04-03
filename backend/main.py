@@ -2,9 +2,9 @@
 Smart Farming Agentic AI System — Main Backend Server
 =====================================================
 FastAPI Application Entry Point
-Consolidated Version: PostgreSQL + Async + Full Agent Suite
+Consolidated Version: PostgreSQL + Async + Full Agent Suite + AI Vision
 """
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
@@ -12,6 +12,8 @@ from typing import Optional, Dict, Any, List
 import uvicorn
 import json
 import io
+import base64
+import random
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -48,7 +50,7 @@ from core.auth_system import AuthSystem
 app = FastAPI(
     title="Smart Farming AI System",
     description="Consolidated Agentic AI System for Precision Agriculture",
-    version="2.1.0"
+    version="2.2.0"
 )
 
 # CORS Configuration
@@ -89,6 +91,10 @@ class DiseaseDetectionRequest(BaseModel):
     crop_type: str = "wheat"
     symptoms: List[str] = []
 
+class ImageDiseaseRequest(BaseModel):
+    image_base64: str
+    crop_type: str = "wheat"
+
 class YieldPredictionRequest(BaseModel):
     crop_type: str
     area_hectares: float
@@ -122,7 +128,7 @@ async def root():
     return {
         "status": "online",
         "service": "Smart Farming AI System",
-        "version": "2.1.0",
+        "version": "2.2.0",
         "timestamp": datetime.utcnow().isoformat()
     }
 
@@ -133,6 +139,7 @@ async def system_status():
         "apis": {
             "market": bool(API_CONFIG.get('data_gov_api_key')),
             "weather": bool(API_CONFIG.get('openweather_api_key')),
+            "grok_vision": bool(API_CONFIG.get('grok_api_key')),
             "ollama": True
         },
         "database": API_CONFIG["database_url"].split(":")[0]
@@ -163,7 +170,6 @@ async def run_agents(farm_id: str = "FARM001"):
         # 1. Collect late sensor data
         readings = await db.get_latest_readings(farm_id)
         if not readings:
-            # For testing/demo, we might want to trigger a simulation here if empty
             return {"status": "no_data", "message": "No sensor data found for this farm"}
             
         # 2. Run lead agent orchestration
@@ -218,6 +224,38 @@ async def detect_disease(request: DiseaseDetectionRequest):
     disease_agent = DiseaseDetectionAgent()
     return disease_agent.detect_disease(request.crop_type, request.symptoms)
 
+@app.post("/detect_disease_image")
+async def detect_disease_from_image(request: ImageDiseaseRequest):
+    """AI-powered crop disease detection from base64 image data"""
+    try:
+        disease_agent = DiseaseDetectionAgent()
+        # Note: If no implementation exists in the current branch for AI vision, 
+        # this will fall back to legacy if possible or error gracefully.
+        if hasattr(disease_agent, 'analyze_image_from_base64'):
+             return disease_agent.analyze_image_from_base64(request.image_base64, request.crop_type)
+        return {"status": "error", "message": "AI Vision model not available in this instance"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/detect_disease_image_upload")
+async def detect_disease_upload(
+    file: UploadFile = File(...),
+    crop_type: str = Form("wheat")
+):
+    """Disease detection via direct file upload"""
+    try:
+        file_bytes = await file.read()
+        image_b64 = base64.b64encode(file_bytes).decode('utf-8')
+        mime_type = file.content_type or "image/jpeg"
+        image_b64 = f"data:{mime_type};base64,{image_b64}"
+        
+        disease_agent = DiseaseDetectionAgent()
+        if hasattr(disease_agent, 'analyze_image_from_base64'):
+            return disease_agent.analyze_image_from_base64(image_b64, crop_type)
+        return {"status": "error", "message": "AI Vision model not available"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/get_govt_schemes")
 async def get_govt_schemes(state: str = "all", crop_type: str = "all"):
     govt_agent = GovtSchemeAgent()
@@ -270,6 +308,84 @@ async def get_dashboard(farm_id: str = "FARM001"):
         "blockchain": blockchain,
         "timestamp": datetime.utcnow().isoformat()
     }
+
+# ── Test Scenarios ──────────────────────────────────────────────────
+
+@app.post("/test/scenario/low_moisture")
+async def scenario_low_moisture(farm_id: str = "FARM001"):
+    try:
+        data = {
+            "farm_id": farm_id,
+            "soil_moisture": 15.0 + random.uniform(-2, 2),
+            "soil_temperature": 24.0 + random.uniform(-1, 1),
+            "soil_ph": 6.8 + random.uniform(-0.1, 0.1),
+            "npk_nitrogen": 180 + random.uniform(-10, 10),
+            "npk_phosphorus": 45 + random.uniform(-5, 5),
+            "npk_potassium": 210 + random.uniform(-10, 10),
+            "humidity": 45.0 + random.uniform(-5, 5),
+            "air_temperature": 28.0 + random.uniform(-2, 2)
+        }
+        await db.store_sensor_data([data])
+        return {"status": "success", "scenario": "Low Moisture", "message": "Critical low moisture simulated!"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/test/scenario/high_temperature")
+async def scenario_high_temp(farm_id: str = "FARM001"):
+    try:
+        data = {
+            "farm_id": farm_id,
+            "soil_moisture": 45.0 + random.uniform(-2, 2),
+            "soil_temperature": 32.0 + random.uniform(-1, 1),
+            "soil_ph": 6.8 + random.uniform(-0.1, 0.1),
+            "npk_nitrogen": 180 + random.uniform(-10, 10),
+            "npk_phosphorus": 45 + random.uniform(-5, 5),
+            "npk_potassium": 210 + random.uniform(-10, 10),
+            "humidity": 30.0 + random.uniform(-5, 5),
+            "air_temperature": 42.0 + random.uniform(-2, 2)
+        }
+        await db.store_sensor_data([data])
+        return {"status": "success", "scenario": "High Temperature", "message": "Extreme heat stress simulated!"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/test/scenario/optimal")
+async def scenario_optimal(farm_id: str = "FARM001"):
+    try:
+        data = {
+            "farm_id": farm_id,
+            "soil_moisture": 55.0 + random.uniform(-2, 2),
+            "soil_temperature": 22.0 + random.uniform(-1, 1),
+            "soil_ph": 6.8 + random.uniform(-0.1, 0.1),
+            "npk_nitrogen": 220 + random.uniform(-10, 10),
+            "npk_phosphorus": 55 + random.uniform(-5, 5),
+            "npk_potassium": 240 + random.uniform(-10, 10),
+            "humidity": 65.0 + random.uniform(-5, 5),
+            "air_temperature": 24.0 + random.uniform(-2, 2)
+        }
+        await db.store_sensor_data([data])
+        return {"status": "success", "scenario": "Optimal", "message": "Ideal conditions simulated!"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/test/scenario/multiple_issues")
+async def scenario_multiple(farm_id: str = "FARM001"):
+    try:
+        data = {
+            "farm_id": farm_id,
+            "soil_moisture": 12.0 + random.uniform(-2, 2),
+            "soil_temperature": 35.0 + random.uniform(-1, 1),
+            "soil_ph": 5.2 + random.uniform(-0.1, 0.1),
+            "npk_nitrogen": 80 + random.uniform(-10, 10),
+            "npk_phosphorus": 15 + random.uniform(-5, 5),
+            "npk_potassium": 90 + random.uniform(-10, 10),
+            "humidity": 25.0 + random.uniform(-5, 5),
+            "air_temperature": 45.0 + random.uniform(-2, 2)
+        }
+        await db.store_sensor_data([data])
+        return {"status": "success", "scenario": "Multi-Factor Emergency", "message": "Multiple critical alerts simulated!"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

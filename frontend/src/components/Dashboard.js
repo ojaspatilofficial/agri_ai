@@ -31,7 +31,6 @@ function Dashboard({ farmId, apiUrl }) {
       setDashboardData(response.data);
       
       if (response.data.sensors) {
-        // Handle both single object and array response
         setSensorData(Array.isArray(response.data.sensors) ? response.data.sensors[0] : response.data.sensors);
       }
       
@@ -69,13 +68,10 @@ function Dashboard({ farmId, apiUrl }) {
   const triggerScenario = async (scenario) => {
     try {
       const targetFarmId = farmId || 'FARM001';
-      const response = await axios.post(`${apiUrl}/simulate_sensors`, {
-        farm_id: targetFarmId,
-        duration_minutes: 1
-      });
+      const response = await axios.post(`${apiUrl}/test/scenario/${scenario}?farm_id=${encodeURIComponent(targetFarmId)}`);
       await fetchDashboardData();
       await fetchRealtimeRecommendations();
-      alert(`✅ Sensors simulated successfully for ${scenario} scenario.`);
+      alert(`✅ ${response.data.message}\n\nDashboard updated successfully.`);
     } catch (error) {
       alert(`❌ Error simulating sensors: ${error.message}`);
     }
@@ -101,7 +97,37 @@ function Dashboard({ farmId, apiUrl }) {
         
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button
-            onClick={() => triggerScenario('test')}
+            onClick={() => triggerScenario('low_moisture')}
+            style={{
+              padding: '0.5rem 1rem',
+              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              fontWeight: '600'
+            }}
+          >
+            🚨 Low Moisture
+          </button>
+          <button
+            onClick={() => triggerScenario('high_temperature')}
+            style={{
+              padding: '0.5rem 1rem',
+              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              fontWeight: '600'
+            }}
+          >
+            🔥 Heat Stress
+          </button>
+          <button
+            onClick={() => triggerScenario('optimal')}
             style={{
               padding: '0.5rem 1rem',
               background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
@@ -113,7 +139,22 @@ function Dashboard({ farmId, apiUrl }) {
               fontWeight: '600'
             }}
           >
-            🔄 Simulate Sensors
+            ✅ Optimal
+          </button>
+          <button
+            onClick={() => triggerScenario('multiple_issues')}
+            style={{
+              padding: '0.5rem 1rem',
+              background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              fontWeight: '600'
+            }}
+          >
+            🔥 Emergency
           </button>
         </div>
       </div>
