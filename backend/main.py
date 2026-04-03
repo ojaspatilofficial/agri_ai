@@ -9,7 +9,9 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 import uvicorn
 import json
+import base64
 from datetime import datetime
+
 
 # Import configuration
 from config import API_CONFIG
@@ -398,7 +400,6 @@ async def get_forecast(location: str = "Delhi", hours: int = 24):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 # Yield Prediction
 @app.post("/predict_yield")
 async def predict_yield(request: YieldPredictionRequest):
@@ -414,10 +415,10 @@ async def predict_yield(request: YieldPredictionRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Disease Detection
+# Disease Detection (symptom-based legacy)
 @app.post("/detect_disease")
 async def detect_disease(request: DiseaseDetectionRequest):
-    """Detect crop diseases"""
+    """Detect crop diseases (symptom-based)"""
     try:
         disease_agent = DiseaseDetectionAgent()
         result = disease_agent.detect_disease(
@@ -427,6 +428,68 @@ async def detect_disease(request: DiseaseDetectionRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Disease Detection from Image Upload (NEW - AI Vision)
+from fastapi import File, UploadFile, Form
+
+class ImageDiseaseRequest(BaseModel):
+    image_base64: str
+    crop_type: str = "wheat"
+
+@app.post("/detect_disease_image")
+async def detect_disease_from_image(request: ImageDiseaseRequest):
+    """
+    AI-powered crop disease detection from uploaded image.
+    
+    Request body:
+    {
+        "image_base64": "data:image/jpeg;base64,...",
+        "crop_type": "wheat"
+    }
+    
+    Returns comprehensive disease analysis including:
+    - Disease detection + confidence score
+    - Severity assessment (mild/moderate/severe)
+    - Treatment recommendations (chemical + organic)
+    - Disease spread timeline prediction
+    - Treatment effectiveness estimates
+    """
+    try:
+        # Initialize disease agent (model is cached after first init)
+        disease_agent = DiseaseDetectionAgent()
+        result = disease_agent.analyze_image_from_base64(
+            image_b64=request.image_base64,
+            crop_type=request.crop_type.lower()
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Disease detection failed: {str(e)}")
+
+@app.post("/detect_disease_image_upload")
+async def detect_disease_upload(
+    file: UploadFile = File(...),
+    crop_type: str = Form("wheat")
+):
+    """
+    Disease detection via multipart form data file upload.
+    Accepts image file directly (no base64 encoding needed).
+    """
+    try:
+        # Read file bytes and convert to base64
+        file_bytes = await file.read()
+        image_b64 = base64.b64encode(file_bytes).decode('utf-8')
+        mime_type = file.content_type or "image/jpeg"
+        image_b64 = f"data:{mime_type};base64,{image_b64}"
+
+        disease_agent = DiseaseDetectionAgent()
+        result = disease_agent.analyze_image_from_base64(
+            image_b64=image_b64,
+            crop_type=crop_type.lower()
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Disease detection failed: {str(e)}")
+
 
 # Market Forecast
 @app.get("/get_market_forecast")

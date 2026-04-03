@@ -11,10 +11,6 @@ function Dashboard({ farmId, apiUrl }) {
   useEffect(() => {
     fetchDashboardData();
     fetchRealtimeRecommendations();
-   
-    
-
-
     
     // Refresh dashboard every 30 seconds
     const dashboardInterval = setInterval(fetchDashboardData, 30000);
