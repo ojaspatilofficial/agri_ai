@@ -9,8 +9,12 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
 
 from core.auth_system import AuthenticationSystem
+import asyncio
 
-def create_test_user():
+def create_test_user_sync():
+    asyncio.run(create_test_user())
+
+async def create_test_user():
     print("=" * 60)
     print("Creating Test User for Smart Farming AI")
     print("=" * 60)
@@ -20,7 +24,7 @@ def create_test_user():
     
     # Create test user
     print("\n📝 Registering user: FARM001...")
-    result = auth.register_user(
+    result = await auth.register_user(
         farmer_id="FARM001",
         password="secure123",
         name="Ravi Kumar",
@@ -48,4 +52,4 @@ def create_test_user():
     print("\n" + "=" * 60)
 
 if __name__ == "__main__":
-    create_test_user()
+    create_test_user_sync()

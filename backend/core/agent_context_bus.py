@@ -196,6 +196,33 @@ class AgentContextBus:
         """Get all decisions made"""
         return self._decisions_log.copy()
 
+    async def persist_to_db(self, farm_id: str, db):
+        """
+        Persist current context snapshot to PostgreSQL agent_memory_logs.
+        Call this at the end of each orchestration cycle.
+        """
+        try:
+            with self._lock:
+                context_copy = self._context.copy()
+                agents_copy = {
+                    k: v.get("data", {}) for k, v in self._agent_outputs.items()
+                }
+                decisions_copy = self._decisions_log.copy()
+
+            await db.store_agent_memory(
+                farm_id=farm_id,
+                agent_name="AgentContextBus",
+                action="snapshot",
+                input_context=agents_copy,
+                output_result={
+                    "shared_context": context_copy,
+                    "decisions": decisions_copy,
+                },
+                summary=f"Bus snapshot with {len(agents_copy)} agents, {len(decisions_copy)} decisions",
+            )
+        except Exception as e:
+            print(f"⚠️ Failed to persist context bus to DB: {e}")
+
     def reset(self):
         """Clear context for new orchestration"""
         with self._lock:
