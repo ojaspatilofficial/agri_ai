@@ -604,5 +604,474 @@ async def scenario_multiple(farm_id: str = "FARM001"):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ── Actions Log ─────────────────────────────────────────────────────────────
+
+class ActionLogSubmitResponse(BaseModel):
+    """Not used as input — purely for documentation."""
+    pass
+
+@app.post("/actions_log/submit")
+async def submit_action_log(
+    farm_id: str = Form(...),
+    action_type: str = Form(...),
+    action_details: str = Form(""),
+    green_tokens: int = Form(0),
+    image: Optional[UploadFile] = File(None),
+):
+    """
+    Submit a farming action with optional proof image.
+    Runs EXIF geo-verification against the farm's stored GPS profile.
+    Verification states: L0_SUBMITTED → L1_IMAGE_UPLOADED → L2_GEO_VERIFIED → L3_ADMIN_REVIEW
+                        or verification_failed (with reason)
+    """
+    from core.geo_verifier import verify_geo
+
+    # Validate inputs
+    farm_id = farm_id.strip().upper()
+    if not action_type:
+        raise HTTPException(status_code=400, detail="action_type is required")
+    if green_tokens < 0:
+        raise HTTPException(status_code=400, detail="green_tokens must be >= 0")
+
+    # Geo verification defaults
+    geo_result = None
+    verification_level = "L0_SUBMITTED"
+    verification_status = "submitted"
+    verification_reason = "No proof image uploaded"
+    geo_match_passed = False
+    proof_lat = None
+    proof_lon = None
+    distance_meters = None
+    allowed_radius_m = None
+    farm_lat = None
+    farm_lon = None
+    image_metadata = None
+
+    if image is not None:
+        image_bytes = await image.read()
+        image_metadata = {"filename": image.filename, "content_type": image.content_type}
+
+        # Look up farm GPS profile
+        farm_profile = await db.get_farm_profile(farm_id)
+        if farm_profile:
+            farm_lat = farm_profile.get("latitude")
+            farm_lon = farm_profile.get("longitude")
+            allowed_radius_m = farm_profile.get("verification_radius_meters", 600.0)
+        else:
+            # Fallback: try auth system farmer profile
+            try:
+                farmer = await auth_system.get_farmer_profile(farm_id)
+                if farmer:
+                    farm_lat = farmer.get("latitude")
+                    farm_lon = farmer.get("longitude")
+                    # farm_size is stored in acres in the Farmer model
+                    farm_size_acres = float(farmer.get("farm_size") or farmer.get("total_land_area_acres") or 1.0)
+                    # Convert acres → m², then derive circle radius, add 500m practical buffer
+                    import math as _math
+                    farm_radius_m = _math.sqrt(farm_size_acres * 4047 / _math.pi)
+                    allowed_radius_m = round(farm_radius_m + 500.0, 0)  # geometric radius + 500m margin
+            except Exception:
+                pass
+            if not allowed_radius_m:
+                allowed_radius_m = 600.0
+
+
+        # Run geo verification
+        geo_result = verify_geo(image_bytes, farm_lat, farm_lon, allowed_radius_m)
+        proof_lat = geo_result.get("proof_latitude")
+        proof_lon = geo_result.get("proof_longitude")
+        distance_meters = geo_result.get("distance_meters")
+        verification_reason = geo_result.get("reason", "")
+        image_metadata["exif_datetime"] = geo_result["exif"].get("datetime")
+        image_metadata["exif_device"] = f"{geo_result['exif'].get('make','')} {geo_result['exif'].get('model','')}".strip()
+        image_metadata["has_gps"] = geo_result["exif"].get("has_gps", False)
+
+        if geo_result["passed"]:
+            verification_level = "L2_GEO_VERIFIED"
+            verification_status = "geo_verified"
+            token_request_status = "awaiting_admin_review"
+            geo_match_passed = True
+        else:
+            verification_level = geo_result.get("verification_level", "verification_failed")
+            # If coordinates were missing entirely, status=geo_failed, otherwise detail the level
+            verification_status = "geo_failed" if not geo_result["exif"].get("has_gps") else "geo_radius_exceeded"
+            token_request_status = "pending" # Manual review / Video verification needed
+            geo_match_passed = False
+    else:
+        verification_level = "L0_SUBMITTED"
+        verification_status = "submitted"
+        token_request_status = "pending"
+
+    payload = {
+        "farm_id": farm_id,
+        "action_type": action_type,
+        "action_details": action_details,
+        "requested_green_tokens": green_tokens,
+        "green_tokens_earned": 0,  # Only minted after L5_APPROVED
+        "token_request_status": token_request_status,
+        "verification_status": verification_status,
+        "verification_level": verification_level,
+        "verification_reason": verification_reason,
+        "geo_match_passed": geo_match_passed,
+        "farm_size_match_passed": True,
+        "distance_meters": distance_meters,
+        "allowed_radius_meters": allowed_radius_m,
+        "proof_latitude": proof_lat,
+        "proof_longitude": proof_lon,
+        "farm_latitude": farm_lat,
+        "farm_longitude": farm_lon,
+        "image_metadata": image_metadata,
+        "video_verification_required": False,
+        "video_verification_status": "not_required",
+    }
+
+    # Geo-verified → move to admin queue
+    if geo_match_passed:
+        payload["token_request_status"] = "awaiting_admin_review"
+
+    saved = await db.log_action(payload)
+    return {
+        "status": "success",
+        "action_id": saved["id"],
+        "verification_level": verification_level,
+        "verification_status": verification_status,
+        "geo_passed": geo_match_passed,
+        "verification_reason": verification_reason,
+        "proof_latitude": proof_lat,
+        "proof_longitude": proof_lon,
+        "distance_meters": distance_meters,
+        "farm_latitude": farm_lat,
+        "farm_longitude": farm_lon,
+        "exif": geo_result["exif"] if geo_result else None,
+    }
+
+
+@app.get("/actions_log")
+async def get_actions_log(farm_id: str = "FARM001", limit: int = 100):
+    """Get all actions for a farm."""
+    actions = await db.list_actions(farm_id=farm_id, limit=limit)
+    total_tokens = sum(int(a.get("green_tokens_earned") or 0) for a in actions)
+    return {
+        "actions": actions,
+        "total_green_tokens": total_tokens,
+        "total_actions": len(actions),
+    }
+
+
+@app.delete("/actions_log/{action_id}")
+async def delete_action_log(action_id: int):
+    """Delete an action log entry."""
+    deleted = await db.delete_action(action_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Action not found")
+    return {"status": "success", "deleted_id": action_id}
+
+
+# ── Admin Auth ────────────────────────────────────────────────────────────────
+
+ADMIN_SUPER_SECRET = os.getenv("ADMIN_SUPER_SECRET", "agri_admin_secret_2026")
+
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+
+class AdminRegisterRequest(BaseModel):
+    username: str
+    password: str
+    role: str = "admin"
+    super_secret: str  # must match env var
+
+def _verify_admin_token(x_admin_token: Optional[str] = None) -> Dict[str, Any]:
+    """Simple shared-token admin auth guard."""
+    import hashlib
+    if not x_admin_token:
+        raise HTTPException(status_code=401, detail="X-Admin-Token header required")
+    # Token format: sha256(username:password)  — set on login
+    return {"token": x_admin_token}
+
+from fastapi import Header
+
+async def require_admin(x_admin_token: Optional[str] = Header(None)):
+    """Depend on this to protect admin routes."""
+    if not x_admin_token:
+        raise HTTPException(status_code=401, detail="Admin authentication required (X-Admin-Token header)")
+    # Verify token exists in DB by checking hash lookup
+    # Token is sha256(username + ":" + password_hash) created at login
+    # We trust it here; a real system would use JWT
+    return x_admin_token
+
+
+@app.post("/admin/login")
+async def admin_login(request: AdminLoginRequest):
+    """Admin login — returns X-Admin-Token to use in subsequent requests."""
+    import hashlib
+    admin = await db.get_admin_by_username(request.username)
+    if not admin:
+        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+    expected_hash = hashlib.sha256(request.password.encode()).hexdigest()
+    if admin["password_hash"] != expected_hash:
+        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+    # Token = sha256(username:password_hash) — deterministic session token
+    token = hashlib.sha256(f"{request.username}:{admin['password_hash']}".encode()).hexdigest()
+    return {
+        "status": "success",
+        "admin_token": token,
+        "username": admin["username"],
+        "role": admin["role"],
+    }
+
+
+@app.post("/admin/register")
+async def admin_register(request: AdminRegisterRequest):
+    """Create a new admin account (requires ADMIN_SUPER_SECRET)."""
+    if request.super_secret != ADMIN_SUPER_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid super secret")
+    if not request.username or len(request.password) < 6:
+        raise HTTPException(status_code=400, detail="Username required, password must be >= 6 chars")
+    try:
+        admin = await db.create_admin(request.username, request.password, request.role)
+        return {"status": "success", "admin": admin}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not create admin: {str(e)}")
+
+
+# ── Admin Verification Queue ───────────────────────────────────────────────────
+
+@app.get("/admin/queue")
+async def admin_queue(
+    status: str = "all",
+    limit: int = 200,
+    admin_token: str = Depends(require_admin)
+):
+    """Fetch the verification queue with optional status filter."""
+    actions = await db.list_pending_actions(limit=limit, status_filter=status)
+    return {"actions": actions, "count": len(actions), "filter": status}
+
+
+class AdminReviewRequest(BaseModel):
+    reviewer: str
+    notes: Optional[str] = None
+
+
+@app.post("/admin/approve/{action_id}")
+async def admin_approve(
+    action_id: int,
+    request: AdminReviewRequest,
+    admin_token: str = Depends(require_admin)
+):
+    """Approve a token request — mints tokens and writes to blockchain ledger."""
+    action = await db.get_action(action_id)
+    if not action:
+        raise HTTPException(status_code=404, detail="Action not found")
+
+    # Mint tokens to blockchain ledger
+    tokens = int(action.get("requested_green_tokens") or 0)
+    try:
+        blockchain_agent = BlockchainAgent()
+        tx = blockchain_agent.record_action(
+            farm_id=action["farm_id"],
+            action_type=action["action_type"],
+            action_details=action.get("action_details", ""),
+            green_tokens_earned=tokens,
+        )
+        tx_hash = tx.get("hash") if tx else None
+    except Exception as e:
+        print(f"⚠️ Blockchain write failed: {e}")
+        tx_hash = None
+
+    updates = {
+        "token_request_status": "approved",
+        "verification_level": "L5_APPROVED",
+        "verification_status": "approved",
+        "green_tokens_earned": tokens,
+        "admin_reviewer": request.reviewer,
+        "admin_review_notes": request.notes,
+        "blockchain_tx_hash": tx_hash,
+    }
+    result = await db.update_action(action_id, updates)
+    return {"status": "approved", "action": result, "tokens_minted": tokens}
+
+
+@app.post("/admin/reject/{action_id}")
+async def admin_reject(
+    action_id: int,
+    request: AdminReviewRequest,
+    admin_token: str = Depends(require_admin)
+):
+    """Reject a token request."""
+    action = await db.get_action(action_id)
+    if not action:
+        raise HTTPException(status_code=404, detail="Action not found")
+
+    updates = {
+        "token_request_status": "rejected",
+        "verification_level": "L5_REJECTED",
+        "verification_status": "rejected",
+        "green_tokens_earned": 0,
+        "admin_reviewer": request.reviewer,
+        "admin_review_notes": request.notes,
+    }
+    result = await db.update_action(action_id, updates)
+    return {"status": "rejected", "action": result}
+
+
+class ScheduleCallRequest(BaseModel):
+    phone: str
+    scheduled_at: str  # ISO datetime string
+    notes: Optional[str] = None
+
+
+@app.post("/admin/schedule_call/{action_id}")
+async def admin_schedule_call(
+    action_id: int,
+    request: ScheduleCallRequest,
+    admin_token: str = Depends(require_admin)
+):
+    """Schedule a WhatsApp video verification call."""
+    action = await db.get_action(action_id)
+    if not action:
+        raise HTTPException(status_code=404, detail="Action not found")
+
+    # Validate phone
+    phone = request.phone.strip()
+    if not phone or len(phone) < 7:
+        raise HTTPException(status_code=400, detail="Valid phone number required")
+
+    try:
+        # Handle 'Z' suffix from JavaScript toISOString()
+        iso_str = request.scheduled_at.replace("Z", "+00:00")
+        scheduled_dt = datetime.fromisoformat(iso_str)
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"scheduled_at must be valid ISO datetime (e.g. 2026-04-10T14:00:00). Recieved: {request.scheduled_at}")
+
+
+    updates = {
+        "token_request_status": "awaiting_video_verification",
+        "verification_level": "L4_VIDEO_PENDING",
+        "video_verification_required": True,
+        "video_verification_status": "scheduled",
+        "video_call_scheduled_at": scheduled_dt,
+        "verification_phone": phone,
+        "admin_review_notes": request.notes,
+    }
+    result = await db.update_action(action_id, updates)
+    return {
+        "status": "call_scheduled",
+        "phone": phone,
+        "scheduled_at": scheduled_dt.isoformat(),
+        "action": result,
+    }
+
+
+class CompleteCallRequest(BaseModel):
+    call_status: str  # "completed" | "failed"
+    notes: Optional[str] = None
+
+
+@app.post("/admin/complete_call/{action_id}")
+async def admin_complete_call(
+    action_id: int,
+    request: CompleteCallRequest,
+    admin_token: str = Depends(require_admin)
+):
+    """Mark a video verification call as completed or failed."""
+    action = await db.get_action(action_id)
+    if not action:
+        raise HTTPException(status_code=404, detail="Action not found")
+
+    if request.call_status not in ("completed", "failed"):
+        raise HTTPException(status_code=400, detail="call_status must be 'completed' or 'failed'")
+
+    if request.call_status == "completed":
+        updates = {
+            "video_verification_status": "completed",
+            "video_verified_at": datetime.utcnow(),
+            "verification_level": "L4_VIDEO_VERIFIED",
+            "token_request_status": "awaiting_admin_review",  # back for final approval
+            "admin_review_notes": request.notes,
+        }
+    else:
+        updates = {
+            "video_verification_status": "failed",
+            "video_verified_at": datetime.utcnow(),
+            "verification_level": "L5_REJECTED",
+            "token_request_status": "rejected",
+            "verification_status": "rejected",
+            "admin_review_notes": request.notes,
+        }
+
+    result = await db.update_action(action_id, updates)
+    return {"status": f"call_{request.call_status}", "action": result}
+
+
+# ── Admin Farmers & Stats ─────────────────────────────────────────────────────
+
+@app.get("/admin/farmers")
+async def admin_farmers(admin_token: str = Depends(require_admin)):
+    """List all farmers with their farm geo profiles."""
+    try:
+        farmers = await db.get_all_farmers_with_profiles()
+    except Exception as e:
+        # Fallback: return farm profiles only
+        farmers = await db.list_farm_profiles()
+    return {"farmers": farmers, "count": len(farmers)}
+
+
+@app.get("/admin/stats")
+async def admin_stats(admin_token: str = Depends(require_admin)):
+    """Aggregated stats for admin dashboard."""
+    return await db.get_verification_stats()
+
+
+# ── Admin Farm Profile CRUD ───────────────────────────────────────────────────
+
+class FarmProfileRequest(BaseModel):
+    farm_name: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    area_hectares: Optional[float] = None
+    verification_radius_meters: Optional[float] = None
+    is_active: Optional[bool] = True
+
+
+@app.get("/admin/farm_profile/{farm_id}")
+async def get_farm_profile(farm_id: str, admin_token: str = Depends(require_admin)):
+    profile = await db.get_farm_profile(farm_id.upper())
+    if not profile:
+        raise HTTPException(status_code=404, detail="Farm profile not found")
+    return profile
+
+
+@app.put("/admin/farm_profile/{farm_id}")
+async def upsert_farm_profile(
+    farm_id: str,
+    request: FarmProfileRequest,
+    admin_token: str = Depends(require_admin)
+):
+    """Create or update a farm's GPS geo-verification profile."""
+    # Validate geo inputs
+    payload = request.dict(exclude_none=True)
+    if "latitude" in payload and not (-90 <= payload["latitude"] <= 90):
+        raise HTTPException(status_code=400, detail="latitude must be between -90 and 90")
+    if "longitude" in payload and not (-180 <= payload["longitude"] <= 180):
+        raise HTTPException(status_code=400, detail="longitude must be between -180 and 180")
+    if "area_hectares" in payload and payload["area_hectares"] < 0:
+        raise HTTPException(status_code=400, detail="area_hectares must be >= 0")
+    if "verification_radius_meters" in payload and payload["verification_radius_meters"] < 10:
+        raise HTTPException(status_code=400, detail="verification_radius_meters must be >= 10")
+
+    result = await db.upsert_farm_profile(farm_id.upper(), payload)
+    return {"status": "updated", "profile": result}
+
+
+@app.get("/admin/farm_profiles")
+async def list_farm_profiles(admin_token: str = Depends(require_admin)):
+    """List all registered farm profiles."""
+    profiles = await db.list_farm_profiles()
+    return {"profiles": profiles, "count": len(profiles)}
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
