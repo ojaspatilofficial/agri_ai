@@ -43,6 +43,8 @@ from agents.drone_satellite_agent import DroneSatelliteAgent
 from agents.climate_risk_agent import ClimateRiskAgent
 from agents.voice_assistant_agent import VoiceAssistantAgent
 from agents.speech_recognition_agent import SpeechRecognitionAgent
+from agents.farm_analytics_agent import FarmAnalyticsAgent
+from agents.agrobrain_agent import AgroBrainAgent
 
 # Core components
 from core.database import AsyncDatabase
@@ -68,6 +70,7 @@ app.add_middleware(
 db = AsyncDatabase(API_CONFIG["database_url"])
 auth_system = AuthSystem(db)
 lead_agent = LeadAgent(db)
+agrobrain_agent = AgroBrainAgent(db, lead_agent.llm)
 
 # Initialize specialized agents
 market_forecast_agent = MarketForecastAgent(api_key=API_CONFIG.get('data_gov_api_key'))
@@ -112,6 +115,10 @@ class CropRequest(BaseModel):
 
 class CropStatusUpdate(BaseModel):
     status: str
+
+class CopilotRequest(BaseModel):
+    message: str
+    farm_id: str = "FARM001"
 
 class RegisterRequest(BaseModel):
     name: str
@@ -330,6 +337,30 @@ async def get_climate_risk(location: str = "Delhi", days: int = 30):
 async def drone_analysis(farm_id: str = "FARM001", lat: float = None, lon: float = None):
     drone_agent = DroneSatelliteAgent()
     return drone_agent.analyze_farm(farm_id, latitude=lat, longitude=lon)
+
+@app.get("/farm_analytics")
+async def get_farm_analytics(farm_id: str = "FARM001"):
+    """Returns comprehensive Farm Analytics Power-Tab data"""
+    analytics_agent = FarmAnalyticsAgent(db)
+    
+    # Try fetching profile to provide full context
+    try:
+        profile = await auth_system.get_farmer_profile(farm_id)
+    except Exception:
+        profile = None
+        
+    return await analytics_agent.generate_full_report(farm_id, profile)
+
+@app.get("/agrobrain_os_data")
+async def get_agrobrain_os_data(farm_id: str = "FARM001"):
+    """Returns the true AgroBrain OS LLM payload"""
+    return await agrobrain_agent.generate_os_dashboard(farm_id)
+
+@app.post("/copilot_chat")
+async def copilot_chat(request: CopilotRequest):
+    """Processes messages to the Farm Copilot"""
+    reply = await agrobrain_agent.run_copilot_chat(request.farm_id, request.message)
+    return {"reply": reply}
 
 # ── Voice & Accessibility ───────────────────────────────────────────
 

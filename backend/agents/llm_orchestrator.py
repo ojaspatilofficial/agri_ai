@@ -13,37 +13,63 @@ from datetime import datetime
 import json
 
 
+import os
+
 class LLMOrchestrator:
     """
-    Local LLM orchestrator using Mistral via Ollama.
-    Falls back to rule-based resolution if LLM unavailable.
+    Local LLM orchestrator using Groq API (Primary) or Mistral via Ollama (Fallback).
+    Falls back to rule-based resolution if both unavailable.
     """
 
     def __init__(
         self, base_url: str = "http://localhost:11434", model: str = "mistral:latest"
     ):
         self.base_url = base_url
-        self.model = model
-        self._available = None
+        self.ollama_model = model
+        self.groq_model = "llama-3.1-8b-instant"
+        
+        self._groq_available = False
+        self._ollama_available = False
+        
+        self.groq_api_key = self._load_api_key()
+        if self.groq_api_key:
+            from groq import Groq
+            try:
+                self.groq_client = Groq(api_key=self.groq_api_key)
+                self._groq_available = True
+                print(f"LLM Orchestrator: Groq API available using {self.groq_model}")
+            except Exception as e:
+                print(f"LLM Orchestrator: Failed to initialize Groq client: {e}")
+                
         self._check_availability()
+        
+    def _load_api_key(self):
+        """Load API key from config file"""
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), '..', 'api_config.json')
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                return config.get('groq_api_key', '')
+        except:
+            return ''
 
     def _check_availability(self):
         """Check if Ollama is running"""
         try:
             response = requests.get(f"{self.base_url}/api/tags", timeout=2)
-            self._available = response.status_code == 200
-            if self._available:
+            self._ollama_available = response.status_code == 200
+            if self._ollama_available and not self._groq_available:
                 print(f"LLM Orchestrator: Mistral available at {self.base_url}")
-            else:
-                print("LLM Orchestrator: Ollama not responding, using rule-based fallback")
         except Exception:
-            self._available = False
-            print("LLM Orchestrator: Ollama not available, using rule-based fallback")
+            self._ollama_available = False
+            
+        if not self._groq_available and not self._ollama_available:
+            print("LLM Orchestrator: No LLM available, using rule-based fallback")
 
     @property
     def is_available(self) -> bool:
         self._check_availability()
-        return self._available or False
+        return self._groq_available or self._ollama_available
 
     async def generate_unified_advice(
         self,
@@ -89,41 +115,78 @@ class LLMOrchestrator:
     def _generate_with_llm(
         self, shared_context: Dict[str, Any], rich_context: Dict[str, Any] = None
     ) -> Dict[str, Any]:
-        """Use Mistral LLM for unified reasoning — now with rich context."""
+        """Use LLM (Groq or Ollama) for unified reasoning — now with rich context."""
         prompt = self._build_llm_prompt(shared_context, rich_context)
 
-        print("🧠 Sending data to local Mistral LLM via Ollama...")
         start_time = time.time()
-        try:
-            response = requests.post(
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {"temperature": 0.3, "num_predict": 512},
-                },
-                timeout=120,
-            )
-
-            latency = (time.time() - start_time) * 1000  # ms
-
-            if response.status_code == 200:
-                result = response.json()
-                print("✅ Mistral successfully generated multi-agent advice!")
+        
+        # Method 1: Groq API (Primary)
+        if self._groq_available:
+            print(f"🧠 Sending data to Groq LLM ({self.groq_model})...")
+            try:
+                chat_completion = self.groq_client.chat.completions.create(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are AgroBrain OS, an expert agricultural AI advisor for an Indian farm. Always provide accurate, data-driven advice without hallucinating."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt,
+                        }
+                    ],
+                    model=self.groq_model,
+                    temperature=0.3,
+                    max_completion_tokens=512,
+                )
+                
+                latency = (time.time() - start_time) * 1000
+                print("✅ Groq successfully generated multi-agent advice!")
                 return {
-                    "source": "llm",
-                    "model": self.model,
-                    "advice": result.get("response", "").strip(),
+                    "source": "groq",
+                    "model": self.groq_model,
+                    "advice": chat_completion.choices[0].message.content.strip(),
                     "confidence": "high",
                     "timestamp": datetime.now().isoformat(),
                     "_prompt": prompt,
                     "_latency_ms": latency,
                 }
-            else:
-                print(f"⚠️ Ollama returned error status: {response.status_code}")
-        except Exception as e:
-            print(f"❌ LLM call failed. Falling back to rule-based. Error: {str(e)[:100]}")
+            except Exception as e:
+                print(f"❌ Groq LLM call failed. Falling back to Ollama/Rule-based. Error: {str(e)[:100]}")
+                
+        # Method 2: Ollama (Fallback)
+        if self._ollama_available:
+            print(f"🧠 Sending data to local Ollama LLM ({self.ollama_model})...")
+            try:
+                response = requests.post(
+                    f"{self.base_url}/api/generate",
+                    json={
+                        "model": self.ollama_model,
+                        "prompt": prompt,
+                        "stream": False,
+                        "options": {"temperature": 0.3, "num_predict": 512},
+                    },
+                    timeout=120,
+                )
+
+                latency = (time.time() - start_time) * 1000  # ms
+
+                if response.status_code == 200:
+                    result = response.json()
+                    print("✅ Ollama successfully generated multi-agent advice!")
+                    return {
+                        "source": "ollama",
+                        "model": self.ollama_model,
+                        "advice": result.get("response", "").strip(),
+                        "confidence": "high",
+                        "timestamp": datetime.now().isoformat(),
+                        "_prompt": prompt,
+                        "_latency_ms": latency,
+                    }
+                else:
+                    print(f"⚠️ Ollama returned error status: {response.status_code}")
+            except Exception as e:
+                print(f"❌ Ollama LLM call failed. Falling back to rule-based. Error: {str(e)[:100]}")
 
         return self._generate_rule_based(shared_context)
 

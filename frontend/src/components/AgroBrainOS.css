@@ -1,0 +1,533 @@
+/* ── Base ─────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+.agrobrain-container {
+  padding: 1.5rem;
+  animation: fadeIn 0.4s ease-out;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  font-family: 'Inter', sans-serif;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Loading / Error ─────────────────────────────────────────────── */
+.ab-loading {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: 4rem; gap: 1rem; color: #6b7280;
+}
+.ab-spinner {
+  width: 40px; height: 40px;
+  border: 4px solid #e5e7eb;
+  border-top-color: #10b981;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.ab-error {
+  padding: 2rem; text-align: center; color: #dc2626;
+  background: #fef2f2; border-radius: 12px;
+}
+
+/* ── Header ──────────────────────────────────────────────────────── */
+.ab-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ab-title-group h2 {
+  margin: 0;
+  font-size: 1.7rem;
+  font-weight: 800;
+  color: #111827;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ab-title-group p {
+  margin: 0.2rem 0 0;
+  color: #6b7280;
+  font-size: 0.88rem;
+}
+
+.ab-controls { display: flex; gap: 0.5rem; align-items: center; }
+
+.ab-select {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  font-size: 0.88rem;
+  font-family: inherit;
+}
+
+.ab-btn-refresh {
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s;
+}
+.ab-btn-refresh:hover { background: #059669; }
+.ab-btn-refresh:disabled { background: #9ca3af; cursor: not-allowed; }
+
+/* ── Smart Alerts Bar ────────────────────────────────────────────── */
+.ab-alerts-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ab-alert-pill {
+  padding: 0.4rem 0.9rem;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ab-alert-high   { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.ab-alert-medium { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.ab-alert-low    { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+
+/* ── Health Banner ───────────────────────────────────────────────── */
+.ab-health-banner {
+  border-radius: 14px;
+  padding: 2rem 2.5rem;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+  transition: transform 0.2s;
+}
+.ab-health-banner:hover { transform: translateY(-2px); }
+
+.ab-health-score-container p {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+  opacity: 0.85;
+  font-weight: 500;
+}
+
+.ab-score-value {
+  font-size: 4rem;
+  font-weight: 800;
+  line-height: 1;
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.1rem;
+}
+.ab-score-value span { font-size: 1.8rem; opacity: 0.75; }
+
+.ab-grade-badge {
+  display: inline-block;
+  margin-top: 0.5rem;
+  background: rgba(255,255,255,0.15);
+  padding: 0.2rem 0.7rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.ab-trend {
+  display: inline-block;
+  margin-top: 0.5rem;
+  margin-left: 0.5rem;
+  background: rgba(255,255,255,0.2);
+  padding: 0.2rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+}
+
+.ab-health-factors { text-align: right; }
+.ab-health-factors p { margin: 0 0 0.5rem; font-weight: 600; opacity: 0.9; }
+.ab-health-factors ul { list-style: none; padding: 0; margin: 0; opacity: 0.85; font-size: 0.88rem; }
+.ab-health-factors li { margin-bottom: 0.3rem; }
+
+/* ── Quadrant Cards ──────────────────────────────────────────────── */
+.ab-quadrants {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.ab-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.ab-card:hover { box-shadow: 0 6px 16px rgba(0,0,0,0.08); transform: translateY(-1px); }
+
+.ab-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.ab-card-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #111827;
+}
+.ab-card > h3 {
+  margin: 0 0 1rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.ab-urgency-badge {
+  color: white;
+  padding: 0.2rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.ab-action-title {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #059669;
+  margin: 0 0 0.4rem;
+  letter-spacing: -0.02em;
+}
+
+.ab-action-reason {
+  color: #4b5563;
+  margin: 0 0 1.25rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.ab-impact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+  margin-bottom: 1.25rem;
+}
+
+.ab-impact-item {
+  background: #f9fafb;
+  border: 1px solid #f3f4f6;
+  padding: 0.65rem;
+  border-radius: 8px;
+}
+.ab-impact-label { font-size: 0.75rem; color: #9ca3af; margin: 0 0 0.2rem; font-weight: 500; }
+.ab-impact-value { font-weight: 600; color: #111827; margin: 0; font-size: 0.9rem; }
+
+.ab-action-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.ab-btn-apply {
+  background: #10b981; color: white;
+  border: none; border-radius: 7px;
+  padding: 0.6rem 1rem;
+  font-weight: 700; cursor: pointer; flex: 1;
+  font-family: inherit; transition: background 0.2s;
+}
+.ab-btn-apply:hover { background: #059669; }
+
+.ab-btn-delay {
+  background: #f59e0b; color: white;
+  border: none; border-radius: 7px;
+  padding: 0.6rem 1rem;
+  font-weight: 700; cursor: pointer; flex: 1;
+  font-family: inherit; transition: background 0.2s;
+}
+.ab-btn-delay:hover { background: #d97706; }
+
+.ab-btn-monitor {
+  background: #6b7280; color: white;
+  border: none; border-radius: 7px;
+  padding: 0.6rem 1rem;
+  font-weight: 700; cursor: pointer; flex: 1;
+  font-family: inherit; transition: background 0.2s;
+}
+.ab-btn-monitor:hover { background: #4b5563; }
+
+.ab-confidence {
+  font-size: 0.78rem;
+  color: #9ca3af;
+  text-align: center;
+  margin: 0.6rem 0 0;
+}
+
+/* Advisor */
+.ab-advisor-text {
+  font-size: 0.96rem;
+  color: #374151;
+  line-height: 1.65;
+  margin-bottom: 1.25rem;
+}
+
+.ab-btn-listen {
+  background: #2563eb; color: white;
+  border: none; border-radius: 7px;
+  padding: 0.55rem 1rem;
+  font-weight: 700; cursor: pointer;
+  font-family: inherit;
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  transition: background 0.2s;
+}
+.ab-btn-listen:hover { background: #1d4ed8; }
+
+.ab-advisor-footer {
+  font-style: italic;
+  color: #9ca3af;
+  font-size: 0.82rem;
+  margin-top: 1rem;
+}
+
+/* ── Toggle Button ───────────────────────────────────────────────── */
+.ab-toggle-btn {
+  align-self: flex-start;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.5rem 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  display: flex; align-items: center; gap: 0.4rem;
+  transition: background 0.2s;
+}
+.ab-toggle-btn:hover { background: #e5e7eb; }
+
+/* ── Agent Data Grid ─────────────────────────────────────────────── */
+.ab-agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 1rem;
+}
+
+.ab-agent-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 1.1rem;
+  transition: box-shadow 0.2s;
+}
+.ab-agent-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.07); }
+
+.ab-agent-card h4 {
+  margin: 0 0 0.8rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  display: flex; align-items: center; gap: 0.4rem;
+  border-bottom: 2px solid #f3f4f6;
+  padding-bottom: 0.5rem;
+}
+
+.ab-ac-soil h4   { color: #7c3aed; border-color: #ede9fe; }
+.ab-ac-water h4  { color: #0284c7; border-color: #e0f2fe; }
+.ab-ac-disease h4{ color: #dc2626; border-color: #fee2e2; }
+.ab-ac-yield h4  { color: #d97706; border-color: #fef3c7; }
+.ab-ac-market h4 { color: #059669; border-color: #d1fae5; }
+.ab-ac-sus h4    { color: #0f766e; border-color: #ccfbf1; }
+
+.ab-ac-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+.ab-ac-grid-1 { display: flex; flex-direction: column; gap: 0.45rem; }
+
+.ab-ac-item {
+  font-size: 0.83rem;
+  color: #374151;
+}
+.ab-ac-item span { color: #9ca3af; margin-right: 0.2rem; font-size: 0.8rem; }
+
+/* ── What-If ─────────────────────────────────────────────────────── */
+.ab-whatif-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.ab-whatif-card {
+  padding: 1.1rem;
+  border-radius: 8px;
+}
+.ab-whatif-now { background: #ecfdf5; border: 1px solid #a7f3d0; }
+.ab-whatif-wait { background: #f9fafb; border: 1px solid #e5e7eb; }
+
+.ab-whatif-card h4 { margin: 0 0 0.75rem; font-size: 0.95rem; font-weight: 700; }
+.ab-whatif-card ul { list-style: none; padding: 0; margin: 0; }
+.ab-whatif-card li { margin-bottom: 0.45rem; font-size: 0.87rem; color: #374151; }
+
+/* ── Farm Copilot ────────────────────────────────────────────────── */
+.ab-copilot {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: white;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.ab-copilot-header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ab-copilot-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #111827;
+  display: flex; align-items: center; gap: 0.4rem;
+}
+
+.ab-copilot-badge {
+  font-size: 0.73rem;
+  background: #dbeafe;
+  color: #1e40af;
+  padding: 0.2rem 0.65rem;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+.ab-copilot-chat {
+  padding: 1.25rem 1.5rem;
+  overflow-y: auto;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.ab-copilot-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: #9ca3af;
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 1rem 0;
+}
+.ab-copilot-placeholder p { margin: 0; }
+
+.ab-quick-questions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.ab-quick-btn {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #374151;
+  font-family: inherit;
+  transition: background 0.2s;
+}
+.ab-quick-btn:hover { background: #e5e7eb; }
+
+.ab-chat-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  max-width: 85%;
+  line-height: 1.55;
+  font-size: 0.9rem;
+}
+
+.ab-chat-farmer {
+  align-self: flex-end;
+  background: #eff6ff;
+  color: #1e40af;
+  padding: 0.65rem 0.95rem;
+  border-radius: 12px 12px 2px 12px;
+  flex-direction: row-reverse;
+}
+
+.ab-chat-ai {
+  align-self: flex-start;
+  background: #f9fafb;
+  color: #111827;
+  padding: 0.65rem 0.95rem;
+  border-radius: 2px 12px 12px 12px;
+  border: 1px solid #f3f4f6;
+}
+
+.ab-chat-avatar {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.ab-typing {
+  animation: pulse 1.2s ease-in-out infinite;
+  color: #6b7280;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.ab-copilot-input {
+  display: flex;
+  border-top: 1px solid #f3f4f6;
+}
+.ab-copilot-input input {
+  flex: 1;
+  border: none;
+  padding: 0.9rem 1.25rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  outline: none;
+  background: transparent;
+}
+.ab-copilot-input button {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 0 1.5rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s;
+}
+.ab-copilot-input button:hover:not(:disabled) { background: #2563eb; }
+.ab-copilot-input button:disabled { background: #9ca3af; cursor: not-allowed; }
+
+/* ── Responsive ──────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .ab-quadrants { grid-template-columns: 1fr; }
+  .ab-health-banner { flex-direction: column; gap: 1rem; text-align: center; }
+  .ab-health-factors { text-align: center; }
+  .ab-whatif-grid { grid-template-columns: 1fr; }
+  .ab-agent-grid { grid-template-columns: 1fr; }
+}

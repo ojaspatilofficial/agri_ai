@@ -11,6 +11,7 @@ import ActionsLog from './components/ActionsLog';
 import SatelliteView from './components/SatelliteView';
 import ProfileView from './components/ProfileView';
 import LanguageSelector from './components/LanguageSelector';
+import AgroBrainOS from './components/AgroBrainOS';
 import { useLanguage } from './context/LanguageContext';
 import axios from 'axios';
 
@@ -141,6 +142,12 @@ function App() {
           📊 {t('dashboard')}
         </button>
         <button 
+          className={`nav-btn ${activeTab === 'analytics' ? 'active' : ''}`}
+          onClick={() => setActiveTab('analytics')}
+        >
+          🧠 AgroBrain OS
+        </button>
+        <button 
           className={`nav-btn ${activeTab === 'profile' ? 'active' : ''}`}
           onClick={() => setActiveTab('profile')}
         >
@@ -199,6 +206,7 @@ function App() {
       {/* Main Content */}
       <div className="container">
         {activeTab === 'dashboard' && <Dashboard farmId={farmId} apiUrl={API_BASE_URL} />}
+        {activeTab === 'analytics' && <AgroBrainOS farmId={farmId} apiUrl={API_BASE_URL} />}
         {activeTab === 'profile' && <ProfileView farmer={farmer} apiUrl={API_BASE_URL} />}
         {activeTab === 'crops' && <CropsManager />}
         {activeTab === 'actions' && <ActionsLog />}
