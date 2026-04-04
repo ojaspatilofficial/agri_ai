@@ -9,39 +9,47 @@ from datetime import datetime
 import json
 
 
+import os
+
 class LLMOrchestrator:
     """
-    Local LLM orchestrator using Mistral via Ollama
+    LLM orchestrator using Groq API (Cloud LLM)
     Falls back to rule-based resolution if LLM unavailable
     """
 
     def __init__(
-        self, base_url: str = "http://localhost:11434", model: str = "mistral:latest"
+        self, base_url: str = "https://api.groq.com/openai/v1", model: str = "mixtral-8x7b-32768"
     ):
         self.base_url = base_url
-        self.model = "mistral:latest"
-        self._available = None
-        self._check_availability()
+        self.model = model
+        self.api_key = self._load_groq_key()
+        self._available = True
+
+    def _load_groq_key(self) -> str:
+        """Load Groq API key from config file or environment"""
+        key = os.environ.get("GROQ_API_KEY", "")
+        if key:
+            return key
+            
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), '..', 'api_config.json')
+            if os.path.exists(config_path):
+                import json
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    return config.get('groq_api_key', '')
+        except Exception as e:
+            print(f"⚠️ Error loading Groq key: {e}")
+        return ""
 
     def _check_availability(self):
-        """Check if Ollama is running"""
-        try:
-            response = requests.get(f"{self.base_url}/api/tags", timeout=2)
-            self._available = response.status_code == 200
-            if self._available:
-                print(f"LLM Orchestrator: Mistral available at {self.base_url}")
-            else:
-                print(
-                    f"LLM Orchestrator: Ollama not responding, using rule-based fallback"
-                )
-        except Exception as e:
-            self._available = False
-            print(f"LLM Orchestrator: Ollama not available, using rule-based fallback")
+        """Check if Groq API is available"""
+        self._available = bool(self.api_key)
 
     @property
     def is_available(self) -> bool:
         self._check_availability()
-        return self._available or False
+        return self._available
 
     def generate_unified_advice(
         self, context: Dict[str, Any], use_llm: bool = True
@@ -56,34 +64,44 @@ class LLMOrchestrator:
             return self._generate_rule_based(context)
 
     def _generate_with_llm(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Use Mistral LLM for unified reasoning"""
+        """Use Groq API for unified reasoning"""
         prompt = self._build_llm_prompt(context)
 
-        print("🧠 Sending data to local Mistral LLM via Ollama...")
+        print(f"🧠 Sending data to Groq API ({self.model})...")
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.3,
+            "max_tokens": 1024
+        }
+        
         try:
             response = requests.post(
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {"temperature": 0.3, "num_predict": 256},
-                },
-                timeout=120,
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30,
             )
 
             if response.status_code == 200:
                 result = response.json()
-                print("✅ Mistral successfully generated multi-agent advice!")
+                advice = result["choices"][0]["message"]["content"]
+                print("✅ Groq successfully generated multi-agent advice!")
                 return {
                     "source": "llm",
                     "model": self.model,
-                    "advice": result.get("response", "").strip(),
+                    "advice": advice.strip(),
                     "confidence": "high",
                     "timestamp": datetime.now().isoformat(),
                 }
             else:
-                print(f"⚠️ Ollama returned error status: {response.status_code}")
+                print(f"⚠️ Groq API returned error status: {response.status_code} - {response.text}")
         except Exception as e:
             print(f"❌ LLM call failed. Falling back to rule-based. Error: {str(e)[:100]}")
 

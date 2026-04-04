@@ -88,3 +88,8 @@ logs/
 
 # Personal paths (documentation with specific paths)
 # We'll keep the documentation but users should update paths for their system
+
+# API configuration files
+backend/api_config.json
+api_config.json
+*.json.local

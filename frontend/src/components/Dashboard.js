@@ -91,7 +91,7 @@ function Dashboard({ farmId, apiUrl }) {
       const targetFarmId = farmId || 'FARM001';
       await axios.post(`${apiUrl}/run_agents?farm_id=${encodeURIComponent(targetFarmId)}`);
       await fetchDashboardData(); 
-      alert("✅ Agents successfully executed and conflicts resolved via Mistral!");
+      alert("✅ Agents successfully executed and conflicts resolved via Groq!");
     } catch (error) {
       alert(`❌ Error running orchestrator: ${error.message}`);
     }
@@ -263,7 +263,7 @@ function Dashboard({ farmId, apiUrl }) {
       {/* Mistral Multi-Agent Orchestration Card */}
       <div className="card" style={{ marginTop: '1.5rem', border: '2px solid #8b5cf6', boxShadow: '0 4px 6px -1px rgba(139, 92, 246, 0.1)' }}>
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(to right, #f3e8ff, #ffffff)' }}>
-          <h3 className="card-title" style={{ color: '#6d28d9', margin: 0 }}>🧠 Mistral Multi-Agent Orchestrator</h3>
+          <h3 className="card-title" style={{ color: '#6d28d9', margin: 0 }}>🧠 Groq Multi-Agent Orchestrator</h3>
           <button 
             onClick={handleRunAgents} 
             disabled={isRunningAgents}
@@ -280,7 +280,7 @@ function Dashboard({ farmId, apiUrl }) {
               boxShadow: '0 2px 4px rgba(109, 40, 217, 0.3)'
             }}
           >
-            {isRunningAgents ? '⏳ Initializing Mistral...' : '🚀 Run Agent Context Bus'}
+            {isRunningAgents ? '⏳ Initializing Groq...' : '🚀 Run Agent Context Bus'}
           </button>
         </div>
         <div className="card-content">
@@ -311,7 +311,7 @@ function Dashboard({ farmId, apiUrl }) {
              <div style={{ textAlign: 'center', padding: '3rem 2rem', color: '#8b5cf6', background: '#faf5ff', borderRadius: '8px', border: '1px dashed #c4b5fd' }}>
                <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🤖</div>
                <strong style={{ fontSize: '1.1rem', display: 'block' }}>Awaiting Orchestration</strong>
-               <p style={{ marginTop: '0.5rem', opacity: 0.8 }}>Click the button above to execute the multi-agent system and resolve logical conflicts via Mistral LLM.</p>
+               <p style={{ marginTop: '0.5rem', opacity: 0.8 }}>Click the button above to execute the multi-agent system and resolve logical conflicts via Groq LLM.</p>
              </div>
           )}
         </div>

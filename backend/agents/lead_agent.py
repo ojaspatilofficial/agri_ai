@@ -135,7 +135,7 @@ class LeadAgent:
             }
             results["shared_context"] = shared_context
             
-            # Step 2 & 3: Cross-agent reasoning via Mistral (LLMOrchestrator)
+            # Step 2 & 3: Cross-agent reasoning via Groq (LLMOrchestrator)
             from agents.llm_orchestrator import LLMOrchestrator
             llm = LLMOrchestrator()
             

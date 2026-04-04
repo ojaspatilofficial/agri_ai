@@ -55,7 +55,7 @@ class VoiceAssistantAgent:
                 "disease": "I'll scan for crop diseases.",
                 "market": "I'll get the latest market prices.",
                 "schemes": "I'll find applicable government schemes for you.",
-                "report": "I am generating a comprehensive farm report using Mistral AI. Please wait a moment.",
+                "report": "I am generating a comprehensive farm report using Groq AI. Please wait a moment.",
                 "unknown": "I didn't understand that. Please try: weather, irrigation, soil, disease, market, schemes, or report."
             },
             "hi": {
@@ -66,7 +66,7 @@ class VoiceAssistantAgent:
                 "disease": "Main fasal ki bimaariyon ki jaanch kar raha hoon.",
                 "market": "Main taaza baazaar ke daam dekh raha hoon.",
                 "schemes": "Main aapke liye sarkari yojanaaon ki jankari de raha hoon.",
-                "report": "Main Mistral AI ki madad se aapki kheti ki poori report nikal raha hoon.",
+                "report": "Main Groq AI ki madad se aapki kheti ki poori report nikal raha hoon.",
                 "unknown": "Main samajh nahi paya. Kripya poochhiye: mausam, sinchai, mitti, bimari, bazaar, yojana, ya report."
             },
             "mr": {
@@ -77,7 +77,7 @@ class VoiceAssistantAgent:
                 "disease": "मी पिकांच्या रोगांची तपासणी करतो आहे.",
                 "market": "मी ताजा बाजार किंमत पाहतो आहे.",
                 "schemes": "मी तुमच्यासाठी सरकारी योजना शोधत आहे.",
-                "report": "मी Mistral AI वापरून तुमच्या शेतीचा संपूर्ण अहवाल तयार करत आहे.",
+                "report": "मी Groq AI वापरून तुमच्या शेतीचा संपूर्ण अहवाल तयार करत आहे.",
                 "unknown": "मला समजले नाही. कृपया विचारा: हवामान, पाणी, माती, रोग, बाजार, योजना किंवा अहवाल."
             }
         }
@@ -305,22 +305,22 @@ class VoiceAssistantAgent:
             global_recs = orchestration_result.get("global_recommendations", [])
             shared_context = orchestration_result.get("shared_context", {})
             
-            Mistral_summary = ""
+            Groq_summary = ""
             if len(global_recs) > 0 and isinstance(global_recs[0], str):
-                Mistral_summary = global_recs[0]
+                Groq_summary = global_recs[0]
             else:
                 try:
                     llm = LLMOrchestrator()
                     unified_advice = llm.generate_unified_advice(shared_context, use_llm=True)
-                    Mistral_summary = unified_advice.get("advice", "Everything looks optimal. No major conflicts detected.")
+                    Groq_summary = unified_advice.get("advice", "Everything looks optimal. No major conflicts detected.")
                 except Exception as e:
                     print(f"⚠️ LLM Error: {e}")
-                    Mistral_summary = "Error communicating with Mistral backend. System is using fallback logic."
+                    Groq_summary = "Error communicating with Groq backend. System is using fallback logic."
                     
             result["data"] = {
-                "report_text": Mistral_summary
+                "report_text": Groq_summary
             }
-            result["action_taken"] = "Generated comprehensive Mistral farm report"
+            result["action_taken"] = "Generated comprehensive Groq farm report"
         
         # Generate voice-friendly summary
         result["voice_summary"] = self._generate_voice_summary(result, language)

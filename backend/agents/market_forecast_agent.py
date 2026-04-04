@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import requests
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
+import xgboost as xgb
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 import json
@@ -265,9 +265,12 @@ class MarketForecastAgent:
         """
         print(f"🤖 Training ML model for {crop}...")
         
+        base_prices = {"wheat": 2200, "rice": 2800, "corn": 1800, "cotton": 6000, "sugarcane": 300}
+        fallback_price = base_prices.get(crop.lower(), 2000)
+        
         # Step 1: Get current live price from API
         live_data = self.fetch_live_price(crop)
-        current_price = live_data.get('current_price', 2000) if live_data else 2000
+        current_price = live_data.get('current_price', fallback_price) if live_data else fallback_price
         
         # Step 2: Fetch historical data (try API first)
         df = self.fetch_historical_data_from_api(crop, days=365)
@@ -302,12 +305,14 @@ class MarketForecastAgent:
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
         
-        # Train Random Forest model
-        model = RandomForestRegressor(
-            n_estimators=100,
-            max_depth=15,
-            min_samples_split=5,
-            min_samples_leaf=2,
+        # Train XGBoost model
+        model = xgb.XGBRegressor(
+            n_estimators=300,
+            learning_rate=0.05,
+            max_depth=6,
+            min_child_weight=2,
+            subsample=0.8,
+            colsample_bytree=0.8,
             random_state=42,
             n_jobs=-1
         )
@@ -325,20 +330,20 @@ class MarketForecastAgent:
         self.models[crop] = model
         self.scalers[crop] = scaler
         
-        # Update accuracy metrics
+        # Update accuracy metrics (ensure standard Python types for JSON serialization)
         self.accuracy_metrics = {
-            "r2_score": round(r2, 4),
-            "mae": round(mae, 2),
-            "rmse": round(rmse, 2),
-            "mape": round(mape, 2),
-            "accuracy_percentage": round(r2 * 100, 2)
+            "r2_score": float(round(r2, 4)),
+            "mae": float(round(mae, 2)),
+            "rmse": float(round(rmse, 2)),
+            "mape": float(round(mape, 2)),
+            "accuracy_percentage": float(round(r2 * 100, 2))
         }
         
         print(f"✅ Model trained - Accuracy: {self.accuracy_metrics['accuracy_percentage']}%")
         
         return {
             "status": "success",
-            "model_type": "Random Forest Regressor",
+            "model_type": "XGBoost Regressor",
             "training_samples": len(X_train),
             "test_samples": len(X_test),
             "metrics": self.accuracy_metrics,
@@ -362,8 +367,11 @@ class MarketForecastAgent:
         model = self.models[crop]
         scaler = self.scalers[crop]
         
+        base_prices = {"wheat": 2200, "rice": 2800, "corn": 1800, "cotton": 6000, "sugarcane": 300}
+        fallback_price = base_prices.get(crop.lower(), 2000)
+        
         # Step 3: Get recent historical data
-        current_price = live_data.get('current_price') if live_data else None
+        current_price = live_data.get('current_price') if live_data else fallback_price
         
         df = self.fetch_historical_data_from_api(crop, days=365)
         
@@ -407,7 +415,8 @@ class MarketForecastAgent:
             X_pred = np.array([list(features.values())])
             X_pred_scaled = scaler.transform(X_pred)
             
-            predicted_price = model.predict(X_pred_scaled)[0]
+            # Use float() to ensure result is JSON serializable
+            predicted_price = float(model.predict(X_pred_scaled)[0])
             
             # Confidence level (decreases with time)
             confidence = "high" if i < 7 else "medium" if i < 15 else "low"
@@ -436,20 +445,21 @@ class MarketForecastAgent:
         else:
             trend = "stable"
         
+        # Use float() for all numerical results to ensure JSON serialization
         # Find best selling window
-        max_price_idx = np.argmax([p['price'] for p in predictions])
+        max_price_idx = int(np.argmax([p['price'] for p in predictions]))
         best_window = predictions[max_price_idx]
         
         # Generate recommendations
         recommendations = self._generate_ml_recommendations(
-            crop, trend, base_price, best_window, predictions, days_ahead
+            crop, trend, float(base_price), best_window, predictions, days_ahead
         )
         
         result = {
             "agent": self.name,
             "timestamp": datetime.now().isoformat(),
             "crop": crop,
-            "current_price": round(base_price, 2),
+            "current_price": float(round(base_price, 2)),
             "price_source": "data.gov.in API (Live)" if live_data else "Historical data",
             "mandis_data": live_data if live_data else None,
             "forecast_days": days_ahead,
@@ -457,14 +467,14 @@ class MarketForecastAgent:
             "trend": trend,
             "best_selling_window": {
                 "date": best_window['date'],
-                "expected_price": best_window['price'],
-                "potential_gain": best_window['change_from_current']
+                "expected_price": float(best_window['price']),
+                "potential_gain": float(best_window['change_from_current'])
             },
             "recommendations": recommendations,
             "ml_model": {
-                "type": "Random Forest Regressor",
+                "type": "XGBoost Regressor",
                 "accuracy": self.accuracy_metrics,
-                "data_source": "100% Live API from data.gov.in",
+                "data_source": "100% Live API from data.gov.in" if live_data else "Fallback ML Simulation",
                 "features_used": [
                     "Historical prices (365 days)",
                     "Seasonal patterns",
