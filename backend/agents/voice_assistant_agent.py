@@ -20,6 +20,7 @@ class VoiceAssistantAgent:
                 "disease": ["disease", "sick", "problem", "pest"],
                 "market": ["price", "market", "sell", "mandi"],
                 "schemes": ["scheme", "subsidy", "government", "loan"],
+                "report": ["report", "summary", "recommendation", "status", "farm status", "update"],
                 "help": ["help", "assist", "how", "what"]
             },
             "hi": {  # Hindi (Both Devanagari and Romanized)
@@ -29,6 +30,7 @@ class VoiceAssistantAgent:
                 "disease": ["bimari", "rog", "keeda", "बीमारी", "रोग", "कीड़ा", "disease"],
                 "market": ["daam", "bazaar", "mandi", "kimmat", "दाम", "बाजार", "मंडी", "किम्मत", "market", "price"],
                 "schemes": ["yojana", "sahayata", "loan", "योजना", "साहायता", "scheme"],
+                "report": ["report", "summary", "rapat", "स्थिति", "रिपोर्ट", "सलाह", "recommendation"],
                 "help": ["madad", "sahayata", "kaise", "मदद", "साहायता", "कैसे", "help"]
             },
             "mr": {  # Marathi (Both Devanagari and Romanized)
@@ -38,6 +40,7 @@ class VoiceAssistantAgent:
                 "disease": ["rog", "ajar", "रोग", "आजार", "बीमारी", "disease"],
                 "market": ["kimmat", "bazaar", "bhav", "gavha", "किंमत", "बाजार", "मंडी", "भाव", "गव्हा", "गव्हाची", "दर", "market", "price"],
                 "schemes": ["yojna", "sahaya", "योजना", "साहाय्य", "सरकारी", "scheme"],
+                "report": ["report", "summary", "ahval", "अहवाल", "स्थिती", "सल्ला", "recommendation"],
                 "help": ["madad", "kashi", "मदत", "कशी", "help", "काय"]
             }
         }
@@ -52,7 +55,8 @@ class VoiceAssistantAgent:
                 "disease": "I'll scan for crop diseases.",
                 "market": "I'll get the latest market prices.",
                 "schemes": "I'll find applicable government schemes for you.",
-                "unknown": "I didn't understand that. Please try: weather, irrigation, soil, disease, market, or schemes."
+                "report": "I am generating a comprehensive farm report using Mistral AI. Please wait a moment.",
+                "unknown": "I didn't understand that. Please try: weather, irrigation, soil, disease, market, schemes, or report."
             },
             "hi": {
                 "greeting": "Namaste! Main aapka Smart Farming Assistant hoon. Main aapki kaise madad kar sakta hoon?",
@@ -62,7 +66,8 @@ class VoiceAssistantAgent:
                 "disease": "Main fasal ki bimaariyon ki jaanch kar raha hoon.",
                 "market": "Main taaza baazaar ke daam dekh raha hoon.",
                 "schemes": "Main aapke liye sarkari yojanaaon ki jankari de raha hoon.",
-                "unknown": "Main samajh nahi paya. Kripya poochhiye: mausam, sinchai, mitti, bimari, bazaar, ya yojana."
+                "report": "Main Mistral AI ki madad se aapki kheti ki poori report nikal raha hoon.",
+                "unknown": "Main samajh nahi paya. Kripya poochhiye: mausam, sinchai, mitti, bimari, bazaar, yojana, ya report."
             },
             "mr": {
                 "greeting": "नमस्कार! मी तुमचा Smart Farming Assistant आहे. मी तुमची कशी मदत करू शकतो?",
@@ -72,7 +77,8 @@ class VoiceAssistantAgent:
                 "disease": "मी पिकांच्या रोगांची तपासणी करतो आहे.",
                 "market": "मी ताजा बाजार किंमत पाहतो आहे.",
                 "schemes": "मी तुमच्यासाठी सरकारी योजना शोधत आहे.",
-                "unknown": "मला समजले नाही. कृपया विचारा: हवामान, पाणी, माती, रोग, बाजार, योजना."
+                "report": "मी Mistral AI वापरून तुमच्या शेतीचा संपूर्ण अहवाल तयार करत आहे.",
+                "unknown": "मला समजले नाही. कृपया विचारा: हवामान, पाणी, माती, रोग, बाजार, योजना किंवा अहवाल."
             }
         }
     
@@ -287,6 +293,35 @@ class VoiceAssistantAgent:
             }
             result["action_taken"] = "Listed government schemes"
         
+        elif intent == "report":
+            from agents.lead_agent import LeadAgent
+            from agents.llm_orchestrator import LLMOrchestrator
+            
+            # Fetch realtime data / run agents to get shared context
+            lead = LeadAgent(self.db)
+            orchestration_result = lead.orchestrate_all_agents("FARM001")
+            
+            # Get the conflict resolutions and global recommendations
+            global_recs = orchestration_result.get("global_recommendations", [])
+            shared_context = orchestration_result.get("shared_context", {})
+            
+            Mistral_summary = ""
+            if len(global_recs) > 0 and isinstance(global_recs[0], str):
+                Mistral_summary = global_recs[0]
+            else:
+                try:
+                    llm = LLMOrchestrator()
+                    unified_advice = llm.generate_unified_advice(shared_context, use_llm=True)
+                    Mistral_summary = unified_advice.get("advice", "Everything looks optimal. No major conflicts detected.")
+                except Exception as e:
+                    print(f"⚠️ LLM Error: {e}")
+                    Mistral_summary = "Error communicating with Mistral backend. System is using fallback logic."
+                    
+            result["data"] = {
+                "report_text": Mistral_summary
+            }
+            result["action_taken"] = "Generated comprehensive Mistral farm report"
+        
         # Generate voice-friendly summary
         result["voice_summary"] = self._generate_voice_summary(result, language)
         
@@ -354,6 +389,9 @@ class VoiceAssistantAgent:
                 if schemes:
                     return f"Top government schemes for you are: {', '.join(schemes[:2])}. For help, call {helpline}."
                 return f"Several government schemes are available for farmers. Call helpline {helpline} for details."
+                
+            elif intent == "report":
+                return data.get("report_text", "No report available.")
         
         # Hindi summaries - COMPLETE NATIVE RESPONSES
         elif language == "hi":
@@ -408,9 +446,12 @@ class VoiceAssistantAgent:
                 elif schemes and len(schemes) == 1:
                     return f"आपके लिए प्रमुख योजना: {schemes[0]}। अधिक जानकारी के लिए {helpline} पर कॉल करें।"
                 return f"किसानों के लिए कई सरकारी योजनाएं उपलब्ध हैं। विवरण के लिए हेल्पलाइन {helpline} पर कॉल करें।"
+                
+            elif intent == "report":
+                return data.get("report_text", "कोई रिपोर्ट उपलब्ध नहीं है।")
             
             elif intent == "unknown":
-                return "मुझे समझ नहीं आया। कृपया पूछें: मौसम, पानी, मिट्टी, बीमारी, बाजार, या योजना के बारे में।"
+                return "मुझे समझ नहीं आया। कृपया पूछें: मौसम, पानी, मिट्टी, बीमारी, बाजार, रिपोर्ट, या योजना के बारे में।"
         
         # Marathi summaries - COMPLETE NATIVE RESPONSES
         elif language == "mr":
@@ -469,9 +510,12 @@ class VoiceAssistantAgent:
                 elif schemes and len(schemes) == 1:
                     return f"तुमच्यासाठी प्रमुख योजना: {schemes[0]}. अधिक माहितीसाठी {helpline} वर कॉल करा."
                 return f"शेतकऱ्यांसाठी अनेक सरकारी योजना उपलब्ध आहेत. तपशीलासाठी हेल्पलाइन {helpline} वर कॉल करा."
+                
+            elif intent == "report":
+                return data.get("report_text", "कोणताही अहवाल उपलब्ध नाही.")
             
             elif intent == "unknown":
-                return "मला समजले नाही. कृपया विचारा: हवामान, पाणी, माती, रोग, बाजार, किंवा योजना बद्दल."
+                return "मला समजले नाही. कृपया विचारा: हवामान, पाणी, माती, रोग, बाजार, अहवाल, किंवा योजना बद्दल."
         
         return result["response_text"]
     

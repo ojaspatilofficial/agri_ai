@@ -251,7 +251,7 @@ function VoiceAssistant({ apiUrl }) {
       recognition.start();
     } else {
       // Fallback: show input modal
-      const command = prompt('Voice recognition not supported. Please type your command:\n(Try: weather, irrigation, soil, disease, market, schemes)');
+      const command = prompt('Voice recognition not supported. Please type your command:\n(Try: weather, irrigation, soil, disease, market, schemes, report)');
       if (command) {
         handleVoiceCommand(command);
       }
@@ -463,6 +463,19 @@ function VoiceAssistant({ apiUrl }) {
                 >
                   Schemes
                 </button>
+                <button 
+                  onClick={() => setTextInput("Give me a farm report")}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    borderRadius: '4px',
+                    border: '1px solid #10b981',
+                    background: 'white',
+                    cursor: 'pointer',
+                    fontSize: '0.75rem'
+                  }}
+                >
+                  Farm Report
+                </button>
               </div>
             </div>
           </div>
@@ -600,6 +613,7 @@ function VoiceAssistant({ apiUrl }) {
                 <li>Check soil moisture</li>
                 <li>Market prices</li>
                 <li>Government schemes</li>
+                <li>Give me a farm report</li>
               </ul>
             </div>
           </div>
