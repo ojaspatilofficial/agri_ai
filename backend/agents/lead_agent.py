@@ -116,7 +116,6 @@ class LeadAgent:
             weather_summary = weather_data.get("summary", {}) if isinstance(weather_data, dict) else {}
             disease_data = results["agent_results"].get("disease", {})
             fertilizer_data = results["agent_results"].get("fertilizer", {})
-            
             rain_in_24h = weather_summary.get("rain_expected", False)
             if not isinstance(rain_in_24h, bool):
                  rain_in_24h = weather_summary.get("avg_rain_probability", 0) > 60
@@ -152,6 +151,8 @@ class LeadAgent:
                 
             results["conflict_resolutions"] = conflicts
             results["global_recommendations"] = [final_recommendation_text]
+            
+
             
             # Priority Actions
             priority = self._determine_priority_actions(results["agent_results"])
