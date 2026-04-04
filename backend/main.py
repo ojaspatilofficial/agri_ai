@@ -315,6 +315,179 @@ async def get_weather(location: str = "Delhi"):
 async def get_forecast(location: str = "Delhi", hours: int = 24):
     return weather_forecast_agent.predict_weather(location, hours)
 
+@app.get("/get_weather_advisory")
+async def get_weather_advisory(location: str = "Pune", farm_id: str = "FARM001"):
+    """
+    Fetches 4-day weather forecast and generates AI-powered farming advisory
+    using Groq LLM. Completely data-driven — no hardcoded recommendations.
+    """
+    import json as _json
+
+    # 1. Fetch 4-day forecast (96 hours = 32 x 3-hour slots from OpenWeather)
+    forecast_raw = weather_forecast_agent.predict_weather(location, hours=96)
+
+    # 2. Build per-day summaries from the 3-hour slots
+    daily_summaries = {}
+    for slot in forecast_raw.get("hourly_forecast", []):
+        try:
+            day_key = slot["time"][:10]  # "YYYY-MM-DD"
+            if day_key not in daily_summaries:
+                daily_summaries[day_key] = {
+                    "date": day_key,
+                    "temps": [],
+                    "rain_probs": [],
+                    "conditions": [],
+                    "humidity": [],
+                    "wind_speeds": [],
+                }
+            d = daily_summaries[day_key]
+            d["temps"].append(slot.get("temperature", 0))
+            d["rain_probs"].append(slot.get("rain_probability", 0))
+            d["conditions"].append(slot.get("conditions", ""))
+            d["humidity"].append(slot.get("humidity", 0))
+            d["wind_speeds"].append(slot.get("wind_speed", 0))
+        except Exception:
+            continue
+
+    # Collapse to 4 days max, compute day-level stats
+    days = []
+    for day_key in sorted(daily_summaries.keys())[:4]:
+        d = daily_summaries[day_key]
+        dominant_condition = max(set(d["conditions"]), key=d["conditions"].count) if d["conditions"] else "Clear"
+        days.append({
+            "date": day_key,
+            "max_temp": round(max(d["temps"]), 1) if d["temps"] else 0,
+            "min_temp": round(min(d["temps"]), 1) if d["temps"] else 0,
+            "avg_temp": round(sum(d["temps"]) / len(d["temps"]), 1) if d["temps"] else 0,
+            "max_rain_prob": round(max(d["rain_probs"]), 1) if d["rain_probs"] else 0,
+            "avg_humidity": round(sum(d["humidity"]) / len(d["humidity"]), 1) if d["humidity"] else 0,
+            "avg_wind_speed": round(sum(d["wind_speeds"]) / len(d["wind_speeds"]), 1) if d["wind_speeds"] else 0,
+            "dominant_condition": dominant_condition,
+            "rain_expected": max(d["rain_probs"]) > 50 if d["rain_probs"] else False,
+        })
+
+    if not days:
+        return {
+            "location": location,
+            "daily_forecast": [],
+            "advisory": "Weather forecast unavailable. Please configure your OpenWeather API key.",
+            "risk_level": "unknown",
+            "error": forecast_raw.get("error", "No forecast data"),
+        }
+
+    # 3. Get optional farm context to personalise advice
+    sensor_ctx = {}
+    try:
+        readings = await db.get_latest_readings(farm_id, limit=1)
+        if readings:
+            r = readings[0]
+            sensor_ctx = {
+                "soil_moisture": r.get("soil_moisture"),
+                "soil_ph": r.get("soil_ph"),
+                "npk_nitrogen": r.get("npk_nitrogen"),
+            }
+    except Exception:
+        pass
+
+    crop_ctx = {}
+    try:
+        crops = await db.get_crops(farm_id)
+        if crops:
+            crop_ctx = {"crop_type": crops[0].get("crop_type", "unknown"), "status": crops[0].get("status", "growing")}
+    except Exception:
+        pass
+
+    # 4. Call Groq LLM for AI advisory — fully grounded in the real forecast data
+    groq_client = lead_agent.llm.groq_client if getattr(lead_agent.llm, "_groq_available", False) else None
+
+    advisory_text = None
+    advisory_structured = None
+
+    if groq_client:
+        days_json = _json.dumps(days, indent=2)
+        sensor_note = f"Farm sensor context: {_json.dumps(sensor_ctx)}" if sensor_ctx else ""
+        crop_note = f"Current crop: {crop_ctx}" if crop_ctx else ""
+
+        prompt = f"""You are an expert agricultural AI advisor.
+Below is the REAL 4-day weather forecast for {location}.
+{sensor_note}
+{crop_note}
+
+FORECAST DATA (do not ignore these numbers):
+{days_json}
+
+Based ONLY on this data, generate a JSON response in this exact schema:
+{{
+  "overall_outlook": "<1-2 sentence summary of the next 4 days weather>",
+  "risk_level": "<low|medium|high|critical>",
+  "risk_reason": "<specific reason tied to the forecast numbers>",
+  "daily_advice": [
+    {{
+      "date": "<YYYY-MM-DD>",
+      "condition_emoji": "<one weather emoji>",
+      "key_advice": "<1 concrete farming action for this specific day>",
+      "do": "<what to do>",
+      "avoid": "<what NOT to do>"
+    }}
+  ],
+  "critical_alerts": ["<alert if any dangerous conditions exist, else empty list>"],
+  "best_farming_window": "<which day(s) are best for field operations and why>",
+  "irrigation_recommendation": "<specific irrigation advice based on rain probability and temp>",
+  "pesticide_spray_window": "<best window for spraying pesticides based on wind/rain forecast>"
+}}
+
+Return ONLY valid JSON. Do not add markdown or explanation."""
+
+        try:
+            response = groq_client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=900,
+            )
+            raw = response.choices[0].message.content.strip()
+            # Strip any markdown fences
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            advisory_structured = _json.loads(raw)
+        except Exception as e:
+            advisory_text = f"AI advisory temporarily unavailable: {str(e)}"
+
+    # Fallback if Groq is not available or parsing failed
+    if advisory_structured is None:
+        has_rain = any(d["rain_expected"] for d in days)
+        max_temp_overall = max(d["max_temp"] for d in days) if days else 0
+        advisory_structured = {
+            "overall_outlook": f"{'Rainy' if has_rain else 'Dry'} conditions expected over the next {len(days)} days with temperatures reaching {max_temp_overall}°C.",
+            "risk_level": "high" if has_rain and max_temp_overall > 36 else ("medium" if has_rain else "low"),
+            "risk_reason": "Heavy rain probability detected" if has_rain else "Dry and warm conditions",
+            "daily_advice": [
+                {
+                    "date": d["date"],
+                    "condition_emoji": "🌧️" if d["rain_expected"] else "☀️",
+                    "key_advice": "Postpone field operations, prepare drainage" if d["rain_expected"] else "Good day for field operations",
+                    "do": "Drain fields, cover storage" if d["rain_expected"] else "Irrigate, spray, plough",
+                    "avoid": "Spraying pesticides, ploughing" if d["rain_expected"] else "Over-irrigation",
+                }
+                for d in days
+            ],
+            "critical_alerts": ["⛈️ Rain expected — postpone fertilizer application"] if has_rain else [],
+            "best_farming_window": next((d["date"] for d in days if not d["rain_expected"]), days[0]["date"] if days else "N/A"),
+            "irrigation_recommendation": "Skip irrigation — rain expected" if has_rain else f"Irrigate — no rain forecast, temperatures up to {max_temp_overall}°C",
+            "pesticide_spray_window": next((d["date"] for d in days if not d["rain_expected"] and d["avg_wind_speed"] < 15), "Avoid spraying — check conditions"),
+        }
+
+    return {
+        "location": location,
+        "farm_id": farm_id,
+        "generated_at": datetime.utcnow().isoformat(),
+        "daily_forecast": days,
+        "ai_advisory": advisory_structured,
+        "data_source": forecast_raw.get("data_source", "OpenWeather API"),
+    }
+
 @app.get("/get_market_forecast")
 async def get_market_forecast(crop: str = "wheat"):
     return market_forecast_agent.forecast_prices(crop)
