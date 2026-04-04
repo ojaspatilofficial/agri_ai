@@ -9,6 +9,7 @@ import VoiceAssistant from './components/VoiceAssistant';
 import CropsManager from './components/CropsManager';
 import ActionsLog from './components/ActionsLog';
 import SatelliteView from './components/SatelliteView';
+import ProfileView from './components/ProfileView';
 import LanguageSelector from './components/LanguageSelector';
 import { useLanguage } from './context/LanguageContext';
 import axios from 'axios';
@@ -140,6 +141,12 @@ function App() {
           📊 {t('dashboard')}
         </button>
         <button 
+          className={`nav-btn ${activeTab === 'profile' ? 'active' : ''}`}
+          onClick={() => setActiveTab('profile')}
+        >
+          👤 {t('profile')}
+        </button>
+        <button 
           className={`nav-btn ${activeTab === 'crops' ? 'active' : ''}`}
           onClick={() => setActiveTab('crops')}
         >
@@ -192,6 +199,7 @@ function App() {
       {/* Main Content */}
       <div className="container">
         {activeTab === 'dashboard' && <Dashboard farmId={farmId} apiUrl={API_BASE_URL} />}
+        {activeTab === 'profile' && <ProfileView farmer={farmer} apiUrl={API_BASE_URL} />}
         {activeTab === 'crops' && <CropsManager />}
         {activeTab === 'actions' && <ActionsLog />}
         {activeTab === 'weather' && <WeatherView apiUrl={API_BASE_URL} />}
@@ -201,7 +209,7 @@ function App() {
       </div>
 
       {/* Voice Assistant */}
-      <VoiceAssistant apiUrl={API_BASE_URL} />
+      <VoiceAssistant apiUrl={API_BASE_URL} farmer={farmer} />
     </div>
   );
 }

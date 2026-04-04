@@ -31,7 +31,10 @@ async def create_test_user():
         "email": "ravi@example.com",
         "phone": "+919876543210",
         "password": "secure123",
-        "location": "Maharashtra, India",
+        "location": "Pune, Maharashtra, India",
+        "latitude": 18.5204,
+        "longitude": 73.8567,
+        "farm_size": 12.5,
         "language": "en"
     }
     

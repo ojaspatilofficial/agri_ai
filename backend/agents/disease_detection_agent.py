@@ -577,12 +577,15 @@ def _call_groq_vision(image_b64: str, crop_type: str, api_key: str) -> Optional[
         print("⚠️ Groq SDK not installed ('pip install groq')")
         return None
 
-    # Strip data URI prefix if present
+    # Strip data URI prefix if present and clean base64 data
     if "," in image_b64:
         header, image_b64_clean = image_b64.split(",", 1)
     else:
         header = "data:image/jpeg;base64"
         image_b64_clean = image_b64
+    
+    # Removing any whitespaces, newlines or carriage returns that might break the data URL
+    image_b64_clean = "".join(image_b64_clean.split())
 
     mime = "image/jpeg"
     if "png" in header: mime = "image/png"
@@ -598,46 +601,29 @@ def _call_groq_vision(image_b64: str, crop_type: str, api_key: str) -> Optional[
     try:
         client = Groq(api_key=api_key)
         
-        # Try primary vision model, fallback to others if needed
-        # Note: Groq models are case-sensitive and vary by tier
-        vision_models = [
-            "meta-llama/llama-4-scout-17b-16e-instruct", # From user's list
-            "llama-3.2-11b-vision-preview",
-            "llama-3.2-90b-vision-preview",
-            "llava-v1.5-7b-4096-preview"
-        ]
-        
-        content = None
-        last_error = None
-        
-        for model in vision_models:
-            try:
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=[
+        # Call vision model with multimodal content
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
                         {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {"type": "image_url", "image_url": {"url": data_url}},
-                            ],
-                        }
+                            "type": "image_url",
+                            "image_url": {
+                                "url": data_url,
+                            },
+                        },
                     ],
-                    max_tokens=1024,
-                    temperature=0.1,
-                )
-                content = response.choices[0].message.content.strip()
-                if content:
-                    print(f"✅ Groq success using model: {model}")
-                    break
-            except Exception as e:
-                last_error = e
-                # print(f"DEBUG: Groq model {model} failed: {e}")
-                continue
-
-        if not content:
-            print(f"⚠️ Groq vision error (all models failed): {last_error}")
-            return None
+                }
+            ],
+            temperature=0.1,
+            max_tokens=1024,
+            response_format={"type": "json_object"}
+        )
+        
+        content = response.choices[0].message.content
 
         # Strip markdown fences if present
         content = re.sub(r"^```(?:json)?\s*", "", content, flags=re.MULTILINE)

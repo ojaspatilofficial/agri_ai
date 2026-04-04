@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import mapped_column, Mapped
-from sqlalchemy import String, Boolean, DateTime, select, update, Text
+from sqlalchemy import String, Boolean, DateTime, Float, select, update, Text
 from .database import Base, AsyncDatabase
 from config import DATABASE_URL
 
@@ -25,7 +25,10 @@ class Farmer(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Metadata
-    location: Mapped[str] = mapped_column(Text, nullable=True) # JSON or string
+    location: Mapped[str] = mapped_column(Text, nullable=True) 
+    latitude: Mapped[float] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float] = mapped_column(Float, nullable=True)
+    farm_size: Mapped[float] = mapped_column(Float, nullable=True) # In hectares
     language: Mapped[str] = mapped_column(String(10), default="en")
 
 # ── Auth System Class ───────────────────────────────────────────
@@ -48,8 +51,11 @@ class AuthSystem:
                 name=farmer_data["name"],
                 email=farmer_data["email"],
                 phone=farmer_data["phone"],
-                password_hash=farmer_data["password"], # In production, use hashing!
+                password_hash=farmer_data["password"], 
                 location=farmer_data.get("location"),
+                latitude=farmer_data.get("latitude"),
+                longitude=farmer_data.get("longitude"),
+                farm_size=farmer_data.get("farm_size"),
                 language=farmer_data.get("language", "en")
             )
             session.add(new_farmer)
@@ -60,15 +66,20 @@ class AuthSystem:
                 "name": new_farmer.name
             }
 
-    async def login_farmer(self, email: str, password: str) -> Dict[str, Any]:
-        """Verify login credentials"""
+    async def login_farmer(self, identifier: str, password: str) -> Dict[str, Any]:
+        """Verify login credentials (email or farmer_id)"""
         async with self.db.session_factory() as session:
-            stmt = select(Farmer).where(Farmer.email == email)
+            # Check by email or farmer_id (case-insensitive)
+            from sqlalchemy import or_, func
+            stmt = select(Farmer).where(or_(
+                func.lower(Farmer.email) == identifier.lower(),
+                func.lower(Farmer.farmer_id) == identifier.lower()
+            ))
             result = await session.execute(stmt)
             farmer = result.scalars().first()
             
             if not farmer or farmer.password_hash != password:
-                return {"status": "failed", "message": "Invalid email or password"}
+                return {"status": "failed", "message": "Invalid email/ID or password"}
                 
             return {
                 "status": "success",
@@ -91,5 +102,8 @@ class AuthSystem:
                 "email": farmer.email,
                 "phone": farmer.phone,
                 "language": farmer.language,
-                "location": farmer.location
+                "location": farmer.location,
+                "latitude": farmer.latitude,
+                "longitude": farmer.longitude,
+                "farm_size": farmer.farm_size
             }

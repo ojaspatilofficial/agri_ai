@@ -34,12 +34,12 @@ class MarketForecastAgent:
             "accuracy_percentage": 0.0
         }
         
-        print(f"✅ {self.name} initialized")
+        print(f"[OK] {self.name} initialized")
         if self.api_key:
-            print(f"🔑 data.gov.in API configured - Using 100% live data")
-            print(f"📊 No base prices - All data fetched from government API")
+            print(f"[KEY] data.gov.in API configured - Using 100% live data")
+            print(f"[CHART] No base prices - All data fetched from government API")
         else:
-            print(f"⚠️ No API key - Limited functionality")
+            print(f"[WARN] No API key - Limited functionality")
     
     def _load_api_key(self):
         """Load API key from config file"""
@@ -70,7 +70,7 @@ class MarketForecastAgent:
                 'filters[commodity]': crop.title()
             }
             
-            print(f"🌐 Fetching LIVE price for {crop} from data.gov.in...")
+            print(f"[INFO] Fetching LIVE price for {crop} from data.gov.in...")
             
             response = requests.get(
                 f"{self.data_gov_url}/{resource_id}",
@@ -102,7 +102,7 @@ class MarketForecastAgent:
                     
                     if prices:
                         avg_price = np.mean(prices)
-                        print(f"✅ Live price: ₹{avg_price:.2f}/quintal (from {len(prices)} mandis)")
+                        print(f"[OK] Live price: Rs.{avg_price:.2f}/quintal (from {len(prices)} mandis)")
                         
                         return {
                             'current_price': round(avg_price, 2),

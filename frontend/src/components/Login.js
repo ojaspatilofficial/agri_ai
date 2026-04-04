@@ -61,7 +61,10 @@ function Login({ onLogin }) {
         const data = await response.json();
 
         if (!response.ok) {
-          setError(data.detail || 'Registration failed');
+          const errorMessage = typeof data.detail === 'string' 
+            ? data.detail 
+            : (Array.isArray(data.detail) ? data.detail[0]?.msg : JSON.stringify(data.detail));
+          setError(errorMessage || 'Registration failed');
           setLoading(false);
           return;
         }
@@ -95,7 +98,10 @@ function Login({ onLogin }) {
         const data = await response.json();
 
         if (!response.ok) {
-          setError(data.detail || 'Invalid credentials');
+          const errorMessage = typeof data.detail === 'string' 
+            ? data.detail 
+            : (Array.isArray(data.detail) ? data.detail[0]?.msg : JSON.stringify(data.detail));
+          setError(errorMessage || 'Invalid credentials');
           setLoading(false);
           return;
         }

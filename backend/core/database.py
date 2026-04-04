@@ -62,8 +62,21 @@ class LLMConversation(Base):
     prompt_sent: Mapped[Text] = mapped_column(Text)
     response_received: Mapped[Text] = mapped_column(Text)
     model_used: Mapped[str] = mapped_column(String(100))
-    context_used: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=True)
+    metadata_used: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=True)
     latency_ms: Mapped[float] = mapped_column(Float, nullable=True)
+
+class Crop(Base):
+    __tablename__ = "crops"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    farm_id: Mapped[str] = mapped_column(String(50), index=True)
+    crop_type: Mapped[str] = mapped_column(String(100))
+    variety: Mapped[str] = mapped_column(String(100), nullable=True)
+    planted_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    expected_harvest: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    area_hectares: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(50), default="growing") # growing, ready, harvested
+    yield_estimate: Mapped[float] = mapped_column(Float, nullable=True)
 
 # ── Database Class ──────────────────────────────────────────────────
 
@@ -171,4 +184,55 @@ class AsyncDatabase:
                 latency_ms=latency_ms
             )
             session.add(conv)
+            await session.commit()
+
+    # ── Crop Management ──────────────────────────────────────────────
+
+    async def store_crop(self, crop_data: Dict[str, Any]):
+        """Store a new crop record"""
+        async with self.session_factory() as session:
+            crop = Crop(
+                farm_id=crop_data.get("farm_id"),
+                crop_type=crop_data.get("crop_type"),
+                variety=crop_data.get("variety"),
+                planted_date=datetime.fromisoformat(crop_data["planted_date"]) if "planted_date" in crop_data else datetime.utcnow(),
+                area_hectares=float(crop_data.get("area_hectares", 1.0)),
+                status=crop_data.get("status", "growing")
+            )
+            session.add(crop)
+            await session.commit()
+            return crop.id
+
+    async def get_crops(self, farm_id: str) -> List[Dict[str, Any]]:
+        """Get all crops for a farm"""
+        async with self.session_factory() as session:
+            stmt = select(Crop).where(Crop.farm_id == farm_id).order_by(desc(Crop.planted_date))
+            result = await session.execute(stmt)
+            crops = result.scalars().all()
+            return [
+                {
+                    "id": c.id,
+                    "crop_type": c.crop_type,
+                    "variety": c.variety,
+                    "planted_date": c.planted_date.isoformat(),
+                    "expected_harvest": c.expected_harvest.isoformat() if c.expected_harvest else None,
+                    "area_hectares": c.area_hectares,
+                    "status": c.status,
+                    "yield_estimate": c.yield_estimate
+                } for c in crops
+            ]
+
+    async def update_crop_status(self, crop_id: int, status: str):
+        """Update the status of a specific crop"""
+        async with self.session_factory() as session:
+            stmt = update(Crop).where(Crop.id == crop_id).values(status=status)
+            await session.execute(stmt)
+            await session.commit()
+
+    async def delete_crop(self, crop_id: int):
+        """Delete a crop record"""
+        async with self.session_factory() as session:
+            from sqlalchemy import delete
+            stmt = delete(Crop).where(Crop.id == crop_id)
+            await session.execute(stmt)
             await session.commit()

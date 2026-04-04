@@ -12,13 +12,15 @@ from typing import Optional, Dict, Any, List
 import uvicorn
 import json
 import io
+import os
 import base64
 import random
 from datetime import datetime
 from dotenv import load_dotenv
 
-# Load environment variables
+# Load environment variables from both .env files
 load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 # Import configuration
 from config import API_CONFIG
@@ -81,6 +83,7 @@ class SensorDataRequest(BaseModel):
 class VoiceCommandRequest(BaseModel):
     text: str
     language: str = "en"
+    farm_id: str = "FARM001"
 
 class SpeechRecognitionRequest(BaseModel):
     audio_base64: str
@@ -100,16 +103,30 @@ class YieldPredictionRequest(BaseModel):
     area_hectares: float
     soil_quality: str = "medium"
 
+class CropRequest(BaseModel):
+    crop_type: str
+    variety: Optional[str] = None
+    planted_date: Optional[str] = None
+    area_hectares: float = 1.0
+    status: str = "growing"
+
+class CropStatusUpdate(BaseModel):
+    status: str
+
 class RegisterRequest(BaseModel):
     name: str
     email: str
     phone: str
     password: str
     location: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    farm_size: Optional[float] = None
     language: str = "en"
 
 class LoginRequest(BaseModel):
-    email: str
+    email: Optional[str] = None
+    farmer_id: Optional[str] = None
     password: str
 
 # ── Lifecycle Events ────────────────────────────────────────────────
@@ -156,10 +173,48 @@ async def register(request: RegisterRequest):
 
 @app.post("/auth/login")
 async def login(request: LoginRequest):
-    result = await auth_system.login_farmer(request.email, request.password)
+    identifier = request.email or request.farmer_id
+    if not identifier:
+        raise HTTPException(status_code=400, detail="Email or Farmer ID is required")
+    
+    result = await auth_system.login_farmer(identifier, request.password)
     if result["status"] == "failed":
         raise HTTPException(status_code=401, detail=result["message"])
     return result
+
+@app.get("/profile")
+async def get_profile(farm_id: str = "FARM001"):
+    profile = await auth_system.get_farmer_profile(farm_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Farmer not found")
+    return profile
+
+# ── Crop Management ──────────────────────────────────────────────
+
+@app.get("/crops")
+async def get_crops(farm_id: str = "FARM001"):
+    crops = await db.get_crops(farm_id)
+    return {"crops": crops}
+
+@app.post("/crops")
+async def add_crop(request: CropRequest, farm_id: str = "FARM001"):
+    try:
+        data = request.dict()
+        data["farm_id"] = farm_id
+        crop_id = await db.store_crop(data)
+        return {"status": "success", "crop_id": crop_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/crops/{crop_id}/status")
+async def update_crop_status(crop_id: int, request: CropStatusUpdate):
+    await db.update_crop_status(crop_id, request.status)
+    return {"status": "success"}
+
+@app.delete("/crops/{crop_id}")
+async def delete_crop(crop_id: int):
+    await db.delete_crop(crop_id)
+    return {"status": "success"}
 
 # ── Core Agentic Workflows ──────────────────────────────────────────
 
@@ -280,8 +335,46 @@ async def drone_analysis(farm_id: str = "FARM001", lat: float = None, lon: float
 
 @app.post("/voice_command")
 async def voice_command(request: VoiceCommandRequest):
+    """LLM-powered voice command with full farm context."""
     voice_agent = VoiceAssistantAgent(db)
-    return voice_agent.process_command(request.text, request.language)
+    farm_id = request.farm_id or "FARM001"
+
+    # ── Gather farm context for the LLM ──────────────────────────────
+    farmer_profile = None
+    sensor_data = None
+    crops = []
+    recent_recommendations = []
+
+    try:
+        farmer_profile = await auth_system.get_farmer_profile(farm_id)
+    except Exception as e:
+        print(f"⚠️ Could not fetch farmer profile: {e}")
+
+    try:
+        readings = await db.get_latest_readings(farm_id, limit=1)
+        if readings:
+            sensor_data = readings[0]
+    except Exception as e:
+        print(f"⚠️ Could not fetch sensor data: {e}")
+
+    try:
+        crops = await db.get_crops(farm_id)
+    except Exception as e:
+        print(f"⚠️ Could not fetch crops: {e}")
+
+    try:
+        recent_recommendations = await db.get_recommendations(farm_id, limit=5)
+    except Exception as e:
+        print(f"⚠️ Could not fetch recommendations: {e}")
+
+    return voice_agent.process_command(
+        text=request.text,
+        language=request.language,
+        farmer_profile=farmer_profile,
+        sensor_data=sensor_data,
+        crops=crops,
+        recent_recommendations=recent_recommendations,
+    )
 
 @app.post("/text_to_speech")
 async def text_to_speech(text: str, language: str = "en"):
@@ -308,6 +401,50 @@ async def get_dashboard(farm_id: str = "FARM001"):
         "blockchain": blockchain,
         "timestamp": datetime.utcnow().isoformat()
     }
+
+@app.get("/realtime_recommendations")
+async def realtime_recommendations(farm_id: str = "FARM001"):
+    """Return real-time alerts derived from the latest sensor readings"""
+    sensors = await db.get_latest_readings(farm_id, limit=1)
+    alerts = []
+    if sensors:
+        s = sensors[0]
+        if s.get("soil_moisture", 50) < 25:
+            alerts.append({
+                "title": "🚨 Low Soil Moisture",
+                "message": f"Soil moisture is critically low at {s['soil_moisture']:.1f}%.",
+                "action": "Irrigate immediately to prevent crop stress.",
+                "priority": "critical"
+            })
+        if s.get("air_temperature", 25) > 38:
+            alerts.append({
+                "title": "🔥 High Temperature Alert",
+                "message": f"Air temperature is {s['air_temperature']:.1f}°C — above stress threshold.",
+                "action": "Increase irrigation frequency and provide shade if possible.",
+                "priority": "critical"
+            })
+        if s.get("soil_ph", 6.5) < 5.5 or s.get("soil_ph", 6.5) > 8.0:
+            alerts.append({
+                "title": "⚠️ Soil pH Out of Range",
+                "message": f"Soil pH is {s['soil_ph']:.1f} — outside the optimal 5.5–8.0 range.",
+                "action": "Apply lime to raise pH or sulfur to lower it.",
+                "priority": "high"
+            })
+        if s.get("npk_nitrogen", 150) < 100:
+            alerts.append({
+                "title": "🌱 Low Nitrogen Levels",
+                "message": f"Nitrogen is {s['npk_nitrogen']:.0f} mg/kg — below optimal.",
+                "action": "Apply nitrogen-rich fertilizer in the next irrigation cycle.",
+                "priority": "high"
+            })
+    if not alerts:
+        alerts.append({
+            "title": "✅ All Systems Optimal",
+            "message": "No critical alerts detected for your farm.",
+            "action": "Continue regular monitoring.",
+            "priority": "low"
+        })
+    return {"recommendations": alerts, "farm_id": farm_id, "timestamp": datetime.utcnow().isoformat()}
 
 # ── Test Scenarios ──────────────────────────────────────────────────
 

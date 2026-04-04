@@ -14,6 +14,7 @@ export const dashboardTranslations = {
     greenTokens: "Green Tokens",
     runAllAgents: "Run All Agents",
     satellite: "Satellite",
+    profile: "Profile",
     
     // Dashboard Page
     farmOverview: "Farm Overview",
@@ -248,6 +249,7 @@ export const dashboardTranslations = {
     greenTokens: "ग्रीन टोकन",
     runAllAgents: "सभी एजेंट चलाएं",
     satellite: "सैटेलाइट",
+    profile: "प्रोफ़ाइल",
     
     // Dashboard Page
     farmOverview: "फार्म अवलोकन",
@@ -482,6 +484,7 @@ export const dashboardTranslations = {
     greenTokens: "ग्रीन टोकन",
     runAllAgents: "सर्व एजंट चालवा",
     satellite: "उपग्रह",
+    profile: "प्रोफाइल",
     
     // Dashboard Page
     farmOverview: "शेत अवलोकन",
