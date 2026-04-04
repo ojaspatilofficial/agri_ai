@@ -54,6 +54,13 @@ class Farmer(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Farm Details
+    total_land_area_acres = Column(Float, nullable=True)
+    number_of_crops = Column(Integer, nullable=True)
+    crops_names = Column(Text, nullable=True)  # Comma-separated crop names
+    sowing_date = Column(Date, nullable=True)
+    sowed_land_area_acres = Column(Float, nullable=True)
 
     # Relationships
     fields = relationship("Field", back_populates="farmer", cascade="all, delete-orphan")
