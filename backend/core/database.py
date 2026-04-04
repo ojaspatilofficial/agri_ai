@@ -77,6 +77,8 @@ class Crop(Base):
     area_hectares: Mapped[float] = mapped_column(Float)
     status: Mapped[str] = mapped_column(String(50), default="growing") # growing, ready, harvested
     yield_estimate: Mapped[float] = mapped_column(Float, nullable=True)
+    latitude: Mapped[float] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float] = mapped_column(Float, nullable=True)
 
 # ── Database Class ──────────────────────────────────────────────────
 
@@ -197,7 +199,9 @@ class AsyncDatabase:
                 variety=crop_data.get("variety"),
                 planted_date=datetime.fromisoformat(crop_data["planted_date"]) if "planted_date" in crop_data else datetime.utcnow(),
                 area_hectares=float(crop_data.get("area_hectares", 1.0)),
-                status=crop_data.get("status", "growing")
+                status=crop_data.get("status", "growing"),
+                latitude=crop_data.get("latitude"),
+                longitude=crop_data.get("longitude")
             )
             session.add(crop)
             await session.commit()
@@ -218,9 +222,32 @@ class AsyncDatabase:
                     "expected_harvest": c.expected_harvest.isoformat() if c.expected_harvest else None,
                     "area_hectares": c.area_hectares,
                     "status": c.status,
-                    "yield_estimate": c.yield_estimate
+                    "yield_estimate": c.yield_estimate,
+                    "latitude": c.latitude,
+                    "longitude": c.longitude
                 } for c in crops
             ]
+
+    async def update_crop(self, crop_id: int, crop_data: Dict[str, Any]):
+        """Update a crop record"""
+        async with self.session_factory() as session:
+            stmt = select(Crop).where(Crop.id == crop_id)
+            result = await session.execute(stmt)
+            crop = result.scalars().first()
+            if crop:
+                if "crop_type" in crop_data:
+                    crop.crop_type = crop_data["crop_type"]
+                if "area_hectares" in crop_data:
+                    crop.area_hectares = crop_data["area_hectares"]
+                if "planted_date" in crop_data:
+                    crop.planted_date = datetime.fromisoformat(crop_data["planted_date"])
+                if "latitude" in crop_data:
+                    crop.latitude = crop_data["latitude"]
+                if "longitude" in crop_data:
+                    crop.longitude = crop_data["longitude"]
+                if "status" in crop_data:
+                    crop.status = crop_data["status"]
+                await session.commit()
 
     async def update_crop_status(self, crop_id: int, status: str):
         """Update the status of a specific crop"""

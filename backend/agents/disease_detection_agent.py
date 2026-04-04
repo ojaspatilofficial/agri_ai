@@ -34,7 +34,7 @@ except ImportError:
 
 # ── Groq API config ────────────────────────────────────────────
 GROQ_BASE_URL   = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL      = "meta-llama/llama-4-scout-17b-16e-instruct"
+GROQ_MODEL      = "llama-3.2-90b-vision-preview"
 
 def _load_groq_key() -> str:
     """Read Groq key from api_config.json or env."""
@@ -632,6 +632,10 @@ def _call_groq_vision(image_b64: str, crop_type: str, api_key: str) -> Optional[
         parsed = json.loads(content)
         return parsed
     except Exception as e:
+        error_msg = str(e).lower()
+        if "image" in error_msg and "not support" in error_msg:
+            print(f"⚠️ Groq vision error: This model does not support image input. Please use a vision-enabled model.")
+            return {"error": "This model does not support image input. Please use a vision-enabled model like llama-3.2-90b-vision-preview."}
         print(f"⚠️ Groq vision parsing/execution error: {e}")
         return None
 

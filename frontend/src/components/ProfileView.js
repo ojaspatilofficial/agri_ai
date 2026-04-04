@@ -9,6 +9,23 @@ function ProfileView({ farmer, apiUrl }) {
   const [cropsData, setCropsData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState({});
+  const [showCropForm, setShowCropForm] = useState(false);
+  const [showProfileForm, setShowProfileForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editingCrop, setEditingCrop] = useState(null);
+  const [cropForm, setCropForm] = useState({
+    crop_type: '',
+    area_hectares: '',
+    planted_date: '',
+    latitude: '',
+    longitude: ''
+  });
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    total_land_area_acres: '',
+    phone: '',
+    email: ''
+  });
 
   const farmId = farmer?.farmerId || farmer?.farmer_id || 'FARM001';
 
@@ -47,11 +64,118 @@ function ProfileView({ farmer, apiUrl }) {
     setLoading(false);
   };
 
+  const handleCropFormChange = (e) => {
+    const { name, value } = e.target;
+    setCropForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const openAddCropForm = () => {
+    setCropForm({
+      crop_type: '',
+      area_hectares: '',
+      planted_date: '',
+      latitude: '',
+      longitude: ''
+    });
+    setEditingCrop(null);
+    setShowCropForm(true);
+  };
+
+  const openEditCropForm = (crop) => {
+    setCropForm({
+      crop_type: crop.crop_type || '',
+      area_hectares: crop.area_hectares?.toString() || '',
+      planted_date: crop.planted_date ? crop.planted_date.split('T')[0] : '',
+      latitude: crop.latitude?.toString() || '',
+      longitude: crop.longitude?.toString() || ''
+    });
+    setEditingCrop(crop.id);
+    setShowCropForm(true);
+  };
+
+  const handleSaveCrop = async () => {
+    setSaving(true);
+    try {
+      const lat = cropForm.latitude || (18.5 + Math.random() * 0.5).toFixed(4);
+      const lon = cropForm.longitude || (73.5 + Math.random() * 0.5).toFixed(4);
+      
+      const cropData = {
+        crop_type: cropForm.crop_type,
+        area_hectares: cropForm.area_hectares ? parseFloat(cropForm.area_hectares) : 1,
+        planted_date: cropForm.planted_date || new Date().toISOString().split('T')[0],
+        latitude: parseFloat(lat),
+        longitude: parseFloat(lon),
+        status: 'growing'
+      };
+
+      if (editingCrop) {
+        await axios.put(`${apiUrl}/crops/${editingCrop}`, cropData);
+      } else {
+        await axios.post(`${apiUrl}/crops?farm_id=${farmId}`, cropData);
+      }
+      
+      setShowCropForm(false);
+      fetchAllData();
+    } catch (err) {
+      console.error('Error saving crop:', err);
+      alert('Failed to save crop');
+    }
+    setSaving(false);
+  };
+
+  const handleDeleteCrop = async (cropId) => {
+    if (!window.confirm('Are you sure you want to delete this crop?')) return;
+    try {
+      await axios.delete(`${apiUrl}/crops/${cropId}`);
+      fetchAllData();
+    } catch (err) {
+      console.error('Error deleting crop:', err);
+      alert('Failed to delete crop');
+    }
+  };
+
+  const openProfileForm = () => {
+    setProfileForm({
+      name: farmerProfile?.name || '',
+      total_land_area_acres: farmerProfile?.total_land_area_acres?.toString() || '',
+      phone: farmerProfile?.phone || '',
+      email: farmerProfile?.email || ''
+    });
+    setShowProfileForm(true);
+  };
+
+  const handleProfileFormChange = (e) => {
+    const { name, value } = e.target;
+    setProfileForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      await axios.put(`${apiUrl}/profile/farm_details?farm_id=${farmId}`, {
+        total_land_area_acres: profileForm.total_land_area_acres ? parseFloat(profileForm.total_land_area_acres) : null
+      });
+      
+      await axios.put(`${apiUrl}/profile/update_basic?farm_id=${farmId}`, {
+        name: profileForm.name,
+        phone: profileForm.phone,
+        email: profileForm.email
+      });
+      
+      setShowProfileForm(false);
+      await fetchAllData();
+    } catch (err) {
+      console.error('Error saving profile:', err);
+      alert('Failed to save profile');
+    }
+    setSaving(false);
+  };
+
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px', gap: '1rem' }}>
         <div className="spinner"></div>
-        <p style={{ color: '#6b7280', fontSize: '0.95rem' }}>Loading your farm profile…</p>
+        <p style={{ color: '#6b7280', fontSize: '0.95rem' }}>Loading your farm profile...</p>
       </div>
     );
   }
@@ -60,17 +184,16 @@ function ProfileView({ farmer, apiUrl }) {
   const totalCropHa = cropsData.reduce((sum, c) => sum + (c.area_hectares || 0), 0);
   const lat = farmerProfile?.latitude || 18.5204;
   const lon = farmerProfile?.longitude || 73.8567;
-  const farmSize = farmerProfile?.farm_size || 12.5;
-  const farmSizeAcres = (farmSize * 2.471).toFixed(1);
+  const farmSize = farmerProfile?.total_land_area_acres || farmerProfile?.farm_size || 12.5;
+  const farmSizeAcres = farmSize.toFixed(1);
 
-  // OpenStreetMap embed URL
   const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lon - 0.02}%2C${lat - 0.015}%2C${lon + 0.02}%2C${lat + 0.015}&layer=mapnik&marker=${lat}%2C${lon}`;
   const mapLink = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=14/${lat}/${lon}`;
 
   return (
     <div style={{ animation: 'fadeIn 0.4s ease-out' }}>
 
-      {/* ── Hero Banner ── */}
+      {/* Hero Banner */}
       <div style={{
         background: 'linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%)',
         color: 'white',
@@ -104,7 +227,7 @@ function ProfileView({ farmer, apiUrl }) {
           <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
             {[
               { icon: '📍', text: farmerProfile?.location || 'Pune, Maharashtra' },
-              { icon: '📐', text: `${farmSize} ha  (${farmSizeAcres} acres)` },
+              { icon: '📐', text: farmSizeAcres + ' acres' },
               { icon: '🌐', text: `${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E` },
             ].map((badge, i) => (
               <span key={i} style={{
@@ -135,12 +258,25 @@ function ProfileView({ farmer, apiUrl }) {
         }}>
           🔄 Refresh
         </button>
+        <button onClick={openProfileForm} style={{
+          background: 'rgba(255,255,255,0.2)',
+          border: '1px solid rgba(255,255,255,0.4)',
+          color: 'white',
+          padding: '0.5rem 1rem',
+          borderRadius: '0.75rem',
+          cursor: 'pointer',
+          fontWeight: '600',
+          fontSize: '0.85rem',
+          flexShrink: 0
+        }}>
+          ✏️ Edit Profile
+        </button>
       </div>
 
-      {/* ── Farm Location Map ── */}
+      {/* Farm Location Map */}
       <div className="card" style={{ marginBottom: '2rem' }}>
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 className="card-title">🗺️ Farm Location & Size</h3>
+          <h3 className="card-title">🗺️ Farm Location</h3>
           <a href={mapLink} target="_blank" rel="noreferrer" style={{
             fontSize: '0.82rem', color: '#059669', fontWeight: '600', textDecoration: 'none',
             padding: '0.3rem 0.75rem', background: '#f0fdf4', borderRadius: '0.5rem',
@@ -150,17 +286,15 @@ function ProfileView({ farmer, apiUrl }) {
           </a>
         </div>
         <div className="card-content" style={{ padding: 0 }}>
-          {/* Stats row */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, borderBottom: '1px solid #f3f4f6' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, borderBottom: '1px solid #f3f4f6' }}>
             {[
               { label: 'Latitude', value: `${lat.toFixed(4)}°N`, icon: '🌐' },
               { label: 'Longitude', value: `${lon.toFixed(4)}°E`, icon: '🌐' },
-              { label: 'Farm Size', value: `${farmSize} ha`, icon: '📐' },
-              { label: 'Equivalent', value: `${farmSizeAcres} acres`, icon: '🌾' },
+              { label: 'Farm Size', value: `${farmSizeAcres} acres`, icon: '📐' },
             ].map((item, i) => (
               <div key={i} style={{
                 padding: '1rem 1.25rem',
-                borderRight: i < 3 ? '1px solid #f3f4f6' : 'none',
+                borderRight: i < 2 ? '1px solid #f3f4f6' : 'none',
                 textAlign: 'center'
               }}>
                 <div style={{ fontSize: '1.1rem' }}>{item.icon}</div>
@@ -169,72 +303,93 @@ function ProfileView({ farmer, apiUrl }) {
               </div>
             ))}
           </div>
-
-          {/* Interactive Map */}
-          <div style={{ position: 'relative', height: '300px', borderRadius: '0 0 1rem 1rem', overflow: 'hidden' }}>
+          <div style={{ position: 'relative', height: '250px', borderRadius: '0 0 1rem 1rem', overflow: 'hidden' }}>
             <iframe
               title="Farm Location Map"
               src={mapUrl}
               style={{ width: '100%', height: '100%', border: 'none' }}
               loading="lazy"
             />
-            {/* Farm size overlay pin */}
-            <div style={{
-              position: 'absolute', top: '12px', left: '12px',
-              background: 'white', padding: '0.5rem 0.75rem',
-              borderRadius: '0.75rem', boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-              fontSize: '0.8rem', fontWeight: '700', color: '#065f46',
-              border: '2px solid #10b981'
-            }}>
-              📍 {farmerProfile?.name || 'Your Farm'} — {farmSize}ha
-            </div>
           </div>
         </div>
       </div>
 
-      {/* ── 3-Column Data Grid ── */}
+      {/* My Crops Section */}
+      <div className="card" style={{ marginBottom: '2rem' }}>
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 className="card-title">🌾 My Crops</h3>
+          <button onClick={openAddCropForm} style={{
+            background: '#059669', color: 'white', border: 'none',
+            padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer',
+            fontWeight: '600', fontSize: '0.85rem'
+          }}>
+            + Add Crop
+          </button>
+        </div>
+        <div className="card-content">
+          {cropsData.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#9ca3af' }}>
+              <p>No crops added yet. Click "Add Crop" to add your first crop.</p>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #f3f4f6' }}>
+                    <th style={{ textAlign: 'left', padding: '0.75rem', color: '#6b7280', fontSize: '0.75rem', textTransform: 'uppercase' }}>Crop</th>
+                    <th style={{ textAlign: 'left', padding: '0.75rem', color: '#6b7280', fontSize: '0.75rem', textTransform: 'uppercase' }}>Area (ha)</th>
+                    <th style={{ textAlign: 'left', padding: '0.75rem', color: '#6b7280', fontSize: '0.75rem', textTransform: 'uppercase' }}>Sowing Date</th>
+                    <th style={{ textAlign: 'left', padding: '0.75rem', color: '#6b7280', fontSize: '0.75rem', textTransform: 'uppercase' }}>Location</th>
+                    <th style={{ textAlign: 'left', padding: '0.75rem', color: '#6b7280', fontSize: '0.75rem', textTransform: 'uppercase' }}>Status</th>
+                    <th style={{ textAlign: 'center', padding: '0.75rem', color: '#6b7280', fontSize: '0.75rem', textTransform: 'uppercase' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cropsData.map((crop, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <td style={{ padding: '0.75rem', fontWeight: '600' }}>
+                        {getCropIcon(crop.crop_type)} {crop.crop_type}
+                      </td>
+                      <td style={{ padding: '0.75rem' }}>{crop.area_hectares} ha</td>
+                      <td style={{ padding: '0.75rem' }}>{crop.planted_date ? crop.planted_date.split('T')[0] : '-'}</td>
+                      <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#6b7280' }}>
+                        {crop.latitude?.toFixed(4)}°N, {crop.longitude?.toFixed(4)}°E
+                      </td>
+                      <td style={{ padding: '0.75rem' }}>
+                        <StatusBadge status={crop.status} />
+                      </td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                        <button onClick={() => openEditCropForm(crop)} style={{ marginRight: '0.5rem', padding: '0.3rem 0.6rem', border: '1px solid #d1d5db', borderRadius: '0.3rem', background: 'white', cursor: 'pointer', fontSize: '0.8rem' }}>Edit</button>
+                        <button onClick={() => handleDeleteCrop(crop.id)} style={{ padding: '0.3rem 0.6rem', border: '1px solid #ef4444', borderRadius: '0.3rem', background: '#fef2f2', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem' }}>Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {cropsData.length > 0 && (
+            <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#f0fdf4', borderRadius: '0.5rem', display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: '600' }}>Total Crops: {cropsData.length}</span>
+              <span style={{ fontWeight: '600' }}>Total Area: {totalCropHa.toFixed(2)} ha</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 3-Column Data Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
 
         {/* Crop Assets */}
         <div className="card">
           <div className="card-header">
             <h3 className="card-title">🚜 Crop Assets</h3>
-            <span style={{ fontSize: '0.75rem', color: '#10b981', background: '#f0fdf4', padding: '0.2rem 0.5rem', borderRadius: '1rem', fontWeight: '600' }}>
-              LIVE
-            </span>
           </div>
           <div className="card-content">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
               <StatBox value={activeCropsCount} label="Active Crops" color="#059669" bg="#f0fdf4" />
               <StatBox value={`${totalCropHa.toFixed(1)} ha`} label="Planted Area" color="#059669" bg="#f0fdf4" />
             </div>
-            {cropsData.length === 0 ? (
-              <p style={{ textAlign: 'center', color: '#9ca3af', fontSize: '0.85rem', padding: '1rem 0' }}>
-                No crops added yet. Use the Crops tab to add your first crop.
-              </p>
-            ) : (
-              cropsData.slice(0, 4).map((crop, i) => (
-                <div key={i} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '0.6rem 0',
-                  borderBottom: i < Math.min(cropsData.length, 4) - 1 ? '1px solid #f3f4f6' : 'none'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                    <span style={{ fontSize: '1.2rem' }}>{getCropIcon(crop.crop_type)}</span>
-                    <div>
-                      <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{crop.crop_type}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{crop.area_hectares} ha</div>
-                    </div>
-                  </div>
-                  <StatusBadge status={crop.status} />
-                </div>
-              ))
-            )}
-            {cropsData.length > 4 && (
-              <p style={{ textAlign: 'center', fontSize: '0.8rem', color: '#6b7280', marginTop: '0.5rem' }}>
-                +{cropsData.length - 4} more crops
-              </p>
-            )}
           </div>
         </div>
 
@@ -292,13 +447,6 @@ function ProfileView({ farmer, apiUrl }) {
                     ₹{market.current_price ? Math.round(market.current_price).toLocaleString() : '—'}
                     <span style={{ fontSize: '0.9rem', fontWeight: '400', color: '#6b7280' }}>/qtl</span>
                   </div>
-                  <div style={{
-                    display: 'inline-block', padding: '0.3rem 0.85rem',
-                    background: '#dcfce7', color: '#15803d',
-                    borderRadius: '2rem', fontWeight: '700', fontSize: '0.8rem'
-                  }}>
-                    📊 {market.mandis_count || 10} Mandis Surveyed
-                  </div>
                 </div>
                 {market.sample_mandis?.slice(0, 3).map((m, i) => (
                   <div key={i} style={{
@@ -319,53 +467,24 @@ function ProfileView({ farmer, apiUrl }) {
         </div>
       </div>
 
-      {/* ── Satellite + Contact ── */}
+      {/* Satellite + Contact */}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
 
         {/* Satellite */}
         <div className="card">
           <div className="card-header">
             <h3 className="card-title">🛰️ Satellite & Field Health</h3>
-            <span style={{ fontSize: '0.72rem', color: '#7c3aed', background: '#f5f3ff', padding: '0.2rem 0.5rem', borderRadius: '1rem', fontWeight: '600' }}>
-              NASA POWER
-            </span>
           </div>
           <div className="card-content">
             {satellite ? (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
                 <StatBox value={satellite.drone_analysis?.ndvi_average ?? '—'} label="NDVI Index" color="#7c3aed" bg="#f5f3ff" />
                 <StatBox value={satellite.drone_analysis?.crop_health ?? '—'} label="Crop Health" color="#7c3aed" bg="#f5f3ff" />
-                <StatBox
-                  value={`${satellite.satellite_analysis?.temperature_trend?.current ?? '—'}°C`}
-                  label="Sat. Temp"
-                  color="#7c3aed" bg="#f5f3ff"
-                />
-                <StatBox
-                  value={`${satellite.satellite_analysis?.precipitation?.last_7_days_mm ?? '—'}mm`}
-                  label="7-Day Rain"
-                  color="#7c3aed" bg="#f5f3ff"
-                />
+                <StatBox value={`${satellite.satellite_analysis?.temperature_trend?.current ?? '—'}°C`} label="Sat. Temp" color="#7c3aed" bg="#f5f3ff" />
+                <StatBox value={`${satellite.satellite_analysis?.precipitation?.last_7_days_mm ?? '—'}mm`} label="7-Day Rain" color="#7c3aed" bg="#f5f3ff" />
               </div>
             ) : (
               <ErrorMessage msg="Satellite data unavailable" />
-            )}
-
-            {satellite?.recommendations?.length > 0 && (
-              <div style={{ marginTop: '1.25rem', borderTop: '1px solid #f3f4f6', paddingTop: '1rem' }}>
-                <div style={{ fontSize: '0.8rem', fontWeight: '700', color: '#6d28d9', marginBottom: '0.5rem' }}>
-                  🤖 AI Field Recommendations
-                </div>
-                {satellite.recommendations.slice(0, 3).map((r, i) => (
-                  <div key={i} style={{
-                    fontSize: '0.82rem', color: '#374151',
-                    padding: '0.4rem 0.6rem',
-                    background: '#faf5ff',
-                    borderLeft: '3px solid #8b5cf6',
-                    borderRadius: '0 0.4rem 0.4rem 0',
-                    marginBottom: '0.4rem'
-                  }}>{r}</div>
-                ))}
-              </div>
             )}
           </div>
         </div>
@@ -382,8 +501,6 @@ function ProfileView({ farmer, apiUrl }) {
                 { icon: '📧', label: 'Email', value: farmerProfile?.email || '—' },
                 { icon: '📞', label: 'Phone', value: farmerProfile?.phone || '—' },
                 { icon: '🌍', label: 'Language', value: farmerProfile?.language?.toUpperCase() || 'EN' },
-                { icon: '📐', label: 'Farm Size', value: `${farmSize} ha · ${farmSizeAcres} acres` },
-                { icon: '🌐', label: 'GPS', value: `${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E` },
               ].map((item, i) => (
                 <div key={i} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
                   <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{item.icon}</span>
@@ -398,11 +515,232 @@ function ProfileView({ farmer, apiUrl }) {
         </div>
       </div>
 
+      {/* Crop Form Modal */}
+      {showCropForm && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowCropForm(false)}>
+          <div style={{
+            background: 'white', borderRadius: '1rem', padding: '2rem', width: '90%', maxWidth: '500px',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.3)'
+          }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ margin: '0 0 1.5rem 0', fontSize: '1.5rem', color: '#059669' }}>
+              {editingCrop ? '✏️ Edit Crop' : '🌾 Add New Crop'}
+            </h2>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.3rem', color: '#374151' }}>
+                  Crop Name *
+                </label>
+                <input
+                  type="text"
+                  name="crop_type"
+                  value={cropForm.crop_type}
+                  onChange={handleCropFormChange}
+                  placeholder="e.g., Wheat, Rice, Cotton"
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.3rem', color: '#374151' }}>
+                  Sowed Area (hectares) *
+                </label>
+                <input
+                  type="number"
+                  name="area_hectares"
+                  value={cropForm.area_hectares}
+                  onChange={handleCropFormChange}
+                  placeholder="e.g., 2"
+                  step="0.1"
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.3rem', color: '#374151' }}>
+                  Date of Sowing *
+                </label>
+                <input
+                  type="date"
+                  name="planted_date"
+                  value={cropForm.planted_date}
+                  onChange={handleCropFormChange}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.3rem', color: '#374151' }}>
+                    Latitude
+                  </label>
+                  <input
+                    type="number"
+                    name="latitude"
+                    value={cropForm.latitude}
+                    onChange={handleCropFormChange}
+                    placeholder="e.g., 18.5204"
+                    step="0.0001"
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.3rem', color: '#374151' }}>
+                    Longitude
+                  </label>
+                  <input
+                    type="number"
+                    name="longitude"
+                    value={cropForm.longitude}
+                    onChange={handleCropFormChange}
+                    placeholder="e.g., 73.8567"
+                    step="0.0001"
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                  />
+                </div>
+              </div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>
+                * Leave lat/lon empty to auto-generate random coordinates
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+              <button
+                onClick={handleSaveCrop}
+                disabled={saving || !cropForm.crop_type || !cropForm.area_hectares}
+                style={{
+                  flex: 1, padding: '0.75rem', borderRadius: '0.5rem', border: 'none',
+                  background: saving || !cropForm.crop_type || !cropForm.area_hectares ? '#9ca3af' : '#059669', 
+                  color: 'white', fontSize: '1rem', fontWeight: '600',
+                  cursor: saving ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={() => setShowCropForm(false)}
+                style={{
+                  flex: 1, padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #d1d5db',
+                  background: 'white', color: '#374151', fontSize: '1rem', fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Edit Modal */}
+      {showProfileForm && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowProfileForm(false)}>
+          <div style={{
+            background: 'white', borderRadius: '1rem', padding: '2rem', width: '90%', maxWidth: '450px',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.3)'
+          }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ margin: '0 0 1.5rem 0', fontSize: '1.5rem', color: '#059669' }}>
+              ✏️ Edit Profile
+            </h2>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.3rem', color: '#374151' }}>
+                  Your Name
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  value={profileForm.name}
+                  onChange={handleProfileFormChange}
+                  placeholder="Enter your name"
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.3rem', color: '#374151' }}>
+                  Total Land Area (acres)
+                </label>
+                <input
+                  type="number"
+                  name="total_land_area_acres"
+                  value={profileForm.total_land_area_acres}
+                  onChange={handleProfileFormChange}
+                  placeholder="e.g., 5"
+                  step="0.1"
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.3rem', color: '#374151' }}>
+                  Phone Number
+                </label>
+                <input
+                  type="text"
+                  name="phone"
+                  value={profileForm.phone}
+                  onChange={handleProfileFormChange}
+                  placeholder="e.g., 9876543210"
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.3rem', color: '#374151' }}>
+                  Email
+                </label>
+                <input
+                  type="email"
+                  name="email"
+                  value={profileForm.email}
+                  onChange={handleProfileFormChange}
+                  placeholder="e.g., farmer@email.com"
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+              <button
+                onClick={handleSaveProfile}
+                disabled={saving}
+                style={{
+                  flex: 1, padding: '0.75rem', borderRadius: '0.5rem', border: 'none',
+                  background: saving ? '#9ca3af' : '#059669', 
+                  color: 'white', fontSize: '1rem', fontWeight: '600',
+                  cursor: saving ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={() => setShowProfileForm(false)}
+                style={{
+                  flex: 1, padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #d1d5db',
+                  background: 'white', color: '#374151', fontSize: '1rem', fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
-
-// ── Sub-components ──────────────────────────────────────
 
 function StatBox({ value, label, color, bg }) {
   return (

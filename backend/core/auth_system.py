@@ -1,10 +1,10 @@
 import os
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import mapped_column, Mapped
-from sqlalchemy import String, Boolean, DateTime, Float, select, update, Text
+from sqlalchemy import String, Boolean, DateTime, Float, Integer, Date, select, update, Text
 from .database import Base, AsyncDatabase
 from config import DATABASE_URL
 
@@ -30,6 +30,13 @@ class Farmer(Base):
     longitude: Mapped[float] = mapped_column(Float, nullable=True)
     farm_size: Mapped[float] = mapped_column(Float, nullable=True) # In hectares
     language: Mapped[str] = mapped_column(String(10), default="en")
+    
+    # Farm Details
+    total_land_area_acres: Mapped[float] = mapped_column(Float, nullable=True)
+    number_of_crops: Mapped[int] = mapped_column(Integer, nullable=True)
+    crops_names: Mapped[str] = mapped_column(Text, nullable=True)
+    sowing_date: Mapped[date] = mapped_column(Date, nullable=True)
+    sowed_land_area_acres: Mapped[float] = mapped_column(Float, nullable=True)
 
 # ── Auth System Class ───────────────────────────────────────────
 
@@ -47,7 +54,7 @@ class AuthSystem:
                 raise Exception("Email already registered")
                 
             new_farmer = Farmer(
-                farmer_id=f"F_{int(datetime.utcnow().timestamp())}",
+                farmer_id=farmer_data.get("farmer_id") or f"F_{int(datetime.utcnow().timestamp())}",
                 name=farmer_data["name"],
                 email=farmer_data["email"],
                 phone=farmer_data["phone"],
@@ -105,5 +112,69 @@ class AuthSystem:
                 "location": farmer.location,
                 "latitude": farmer.latitude,
                 "longitude": farmer.longitude,
-                "farm_size": farmer.farm_size
+                "farm_size": farmer.farm_size,
+                "total_land_area_acres": farmer.total_land_area_acres,
+                "number_of_crops": farmer.number_of_crops,
+                "crops_names": farmer.crops_names,
+                "sowing_date": farmer.sowing_date.isoformat() if farmer.sowing_date else None,
+                "sowed_land_area_acres": farmer.sowed_land_area_acres
+            }
+
+    async def update_farm_details(self, farmer_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update farm details"""
+        async with self.db.session_factory() as session:
+            stmt = select(Farmer).where(Farmer.farmer_id == farmer_id)
+            result = await session.execute(stmt)
+            farmer = result.scalars().first()
+            if not farmer:
+                return None
+            
+            if data.get("total_land_area_acres") is not None:
+                farmer.total_land_area_acres = data["total_land_area_acres"]
+            if data.get("number_of_crops") is not None:
+                farmer.number_of_crops = data["number_of_crops"]
+            if data.get("crops_names") is not None:
+                farmer.crops_names = data["crops_names"]
+            if data.get("sowing_date") is not None:
+                try:
+                    farmer.sowing_date = datetime.strptime(data["sowing_date"], "%Y-%m-%d").date()
+                except:
+                    pass
+            if data.get("sowed_land_area_acres") is not None:
+                farmer.sowed_land_area_acres = data["sowed_land_area_acres"]
+            
+            await session.commit()
+            
+            return {
+                "farmer_id": farmer.farmer_id,
+                "total_land_area_acres": farmer.total_land_area_acres,
+                "number_of_crops": farmer.number_of_crops,
+                "crops_names": farmer.crops_names,
+                "sowing_date": farmer.sowing_date.isoformat() if farmer.sowing_date else None,
+                "sowed_land_area_acres": farmer.sowed_land_area_acres
+            }
+
+    async def update_basic_profile(self, farmer_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update basic profile - name, phone, email"""
+        async with self.db.session_factory() as session:
+            stmt = select(Farmer).where(Farmer.farmer_id == farmer_id)
+            result = await session.execute(stmt)
+            farmer = result.scalars().first()
+            if not farmer:
+                return None
+            
+            if data.get("name") is not None:
+                farmer.name = data["name"]
+            if data.get("phone") is not None:
+                farmer.phone = data["phone"]
+            if data.get("email") is not None:
+                farmer.email = data["email"]
+            
+            await session.commit()
+            
+            return {
+                "farmer_id": farmer.farmer_id,
+                "name": farmer.name,
+                "phone": farmer.phone,
+                "email": farmer.email
             }

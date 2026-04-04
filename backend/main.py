@@ -131,6 +131,13 @@ class RegisterRequest(BaseModel):
     farm_size: Optional[float] = None
     language: str = "en"
 
+class FarmDetailsRequest(BaseModel):
+    total_land_area_acres: Optional[float] = None
+    number_of_crops: Optional[int] = None
+    crops_names: Optional[str] = None
+    sowing_date: Optional[str] = None
+    sowed_land_area_acres: Optional[float] = None
+
 class LoginRequest(BaseModel):
     email: Optional[str] = None
     farmer_id: Optional[str] = None
@@ -196,6 +203,33 @@ async def get_profile(farm_id: str = "FARM001"):
         raise HTTPException(status_code=404, detail="Farmer not found")
     return profile
 
+@app.put("/profile/farm_details")
+async def update_farm_details(request: FarmDetailsRequest, farm_id: str = "FARM001"):
+    """Update farm details - land area, crops, sowing info"""
+    try:
+        result = await auth_system.update_farm_details(farm_id, request.dict())
+        if not result:
+            raise HTTPException(status_code=404, detail="Farmer not found")
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class BasicProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+
+@app.put("/profile/update_basic")
+async def update_basic_profile(request: BasicProfileUpdate, farm_id: str = "FARM001"):
+    """Update basic profile info - name, phone, email"""
+    try:
+        result = await auth_system.update_basic_profile(farm_id, request.dict())
+        if not result:
+            raise HTTPException(status_code=404, detail="Farmer not found")
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # ── Crop Management ──────────────────────────────────────────────
 
 @app.get("/crops")
@@ -210,6 +244,15 @@ async def add_crop(request: CropRequest, farm_id: str = "FARM001"):
         data["farm_id"] = farm_id
         crop_id = await db.store_crop(data)
         return {"status": "success", "crop_id": crop_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/crops/{crop_id}")
+async def update_crop(crop_id: int, request: CropRequest):
+    try:
+        data = request.dict()
+        await db.update_crop(crop_id, data)
+        return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -291,12 +334,14 @@ async def detect_disease_from_image(request: ImageDiseaseRequest):
     """AI-powered crop disease detection from base64 image data"""
     try:
         disease_agent = DiseaseDetectionAgent()
-        # Note: If no implementation exists in the current branch for AI vision, 
-        # this will fall back to legacy if possible or error gracefully.
-        if hasattr(disease_agent, 'analyze_image_from_base64'):
-             return disease_agent.analyze_image_from_base64(request.image_base64, request.crop_type)
-        return {"status": "error", "message": "AI Vision model not available in this instance"}
+        result = disease_agent.analyze_image_from_base64(request.image_base64, request.crop_type)
+        if result and isinstance(result, dict) and result.get("error"):
+            return result
+        return result
     except Exception as e:
+        error_msg = str(e).lower()
+        if "image" in error_msg and "not support" in error_msg:
+            return {"error": "This model does not support image input. Please use a vision-enabled model."}
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/detect_disease_image_upload")
@@ -312,10 +357,14 @@ async def detect_disease_upload(
         image_b64 = f"data:{mime_type};base64,{image_b64}"
         
         disease_agent = DiseaseDetectionAgent()
-        if hasattr(disease_agent, 'analyze_image_from_base64'):
-            return disease_agent.analyze_image_from_base64(image_b64, crop_type)
-        return {"status": "error", "message": "AI Vision model not available"}
+        result = disease_agent.analyze_image_from_base64(image_b64, crop_type)
+        if result and isinstance(result, dict) and result.get("error"):
+            return result
+        return result
     except Exception as e:
+        error_msg = str(e).lower()
+        if "image" in error_msg and "not support" in error_msg:
+            return {"error": "This model does not support image input. Please use a vision-enabled model."}
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/get_govt_schemes")
