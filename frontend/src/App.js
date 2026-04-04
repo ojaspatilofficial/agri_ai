@@ -4,6 +4,7 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import WeatherView from './components/WeatherView';
 import MarketView from './components/MarketView';
+import MarketplaceView from './components/MarketplaceView';
 import BlockchainView from './components/BlockchainViewEnhanced';
 import VoiceAssistant from './components/VoiceAssistant';
 import CropsManager from './components/CropsManager';
@@ -190,6 +191,12 @@ function App() {
           🌟 {t('greenTokens')}
         </button>
         <button 
+          className={`nav-btn ${activeTab === 'marketplace' ? 'active' : ''}`}
+          onClick={() => setActiveTab('marketplace')}
+        >
+          🏷️ Marketplace
+        </button>
+        <button 
           className="nav-btn"
           onClick={handleRunAgents}
           disabled={loading}
@@ -214,6 +221,7 @@ function App() {
         {activeTab === 'market' && <MarketView apiUrl={API_BASE_URL} />}
         {activeTab === 'satellite' && <SatelliteView farmId={farmId} apiUrl={API_BASE_URL} />}
         {activeTab === 'blockchain' && <BlockchainView apiUrl={API_BASE_URL} farmId={farmId} />}
+        {activeTab === 'marketplace' && <MarketplaceView />}
       </div>
 
       {/* Voice Assistant */}

@@ -492,6 +492,19 @@ Return ONLY valid JSON. Do not add markdown or explanation."""
 async def get_market_forecast(crop: str = "wheat"):
     return market_forecast_agent.forecast_prices(crop)
 
+@app.get("/api/marketplace")
+async def get_marketplace():
+    import requests
+    api_key = "579b464db66ec23bdd0000015f2ca629512847084dc2eb14b8c78d92"
+    url = f"https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070?api-key={api_key}&format=json&limit=1000"
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to fetch data from data.gov.in")
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/predict_yield")
 async def predict_yield(request: YieldPredictionRequest):
     yield_agent = YieldPredictionAgent(db)
