@@ -13,6 +13,7 @@ import SatelliteView from './components/SatelliteView';
 import ProfileView from './components/ProfileView';
 import LanguageSelector from './components/LanguageSelector';
 import AgroBrainOS from './components/AgroBrainOS';
+import AdminPanel from './components/AdminPanel';
 import { useLanguage } from './context/LanguageContext';
 import axios from 'axios';
 
@@ -29,6 +30,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [farmId, setFarmId] = useState('FARM001');
   const [loading, setLoading] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(() => !!localStorage.getItem('admin_token'));
 
   // Check if farmer is already logged in
   useEffect(() => {
@@ -48,6 +50,13 @@ function App() {
   const handleLogout = () => {
     localStorage.removeItem('farmer');
     setFarmer(null);
+    setActiveTab('dashboard');
+  };
+
+  const handleAdminLogout = () => {
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_user');
+    setIsAdmin(false);
     setActiveTab('dashboard');
   };
 
@@ -190,6 +199,13 @@ function App() {
         >
           🌟 {t('greenTokens')}
         </button>
+        <button
+          className={`nav-btn ${activeTab === 'admin' ? 'active' : ''}`}
+          onClick={() => setActiveTab('admin')}
+          style={{ background: activeTab === 'admin' ? '#6366f1' : '#f3f4f6', color: activeTab === 'admin' ? 'white' : '#374151' }}
+        >
+          🛡️ Admin
+        </button>
         <button 
           className={`nav-btn ${activeTab === 'marketplace' ? 'active' : ''}`}
           onClick={() => setActiveTab('marketplace')}
@@ -216,7 +232,7 @@ function App() {
         {activeTab === 'analytics' && <AgroBrainOS farmId={farmId} apiUrl={API_BASE_URL} />}
         {activeTab === 'profile' && <ProfileView farmer={farmer} apiUrl={API_BASE_URL} />}
         {activeTab === 'crops' && <CropsManager />}
-        {activeTab === 'actions' && <ActionsLog />}
+        {activeTab === 'actions' && <ActionsLog farmId={farmId} farmer={farmer} />}
         {activeTab === 'weather' && <WeatherView apiUrl={API_BASE_URL} />}
         {activeTab === 'market' && <MarketView apiUrl={API_BASE_URL} />}
         {activeTab === 'satellite' && <SatelliteView farmId={farmId} apiUrl={API_BASE_URL} />}
