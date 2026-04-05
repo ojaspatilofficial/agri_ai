@@ -674,10 +674,82 @@ class DiseaseDetectionAgent:
         return self.analyze_image_from_base64(image_data, crop_type)
 
     def detect_disease(self, crop_type: str, symptoms=None, image_data=None) -> Dict[str, Any]:
-        """Legacy symptom-based endpoint."""
+        """Detect disease from image (Groq Vision) or symptom keywords (ML model)."""
         if image_data:
             return self.analyze_image_from_base64(image_data, crop_type)
+        if symptoms:
+            return self._analyze_ml_symptoms(crop_type, list(symptoms))
         return self._legacy_symptom(crop_type)
+
+    def analyze_from_features(
+        self,
+        crop_type: str,
+        soil_ph: float = 6.5,
+        soil_moisture: float = 50.0,
+        temperature: float = 25.0,
+        humidity: float = 65.0,
+        nitrogen: float = 100.0,
+        rainfall: float = 5.0,
+        symptoms: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Full ML-based disease prediction using structured sensor data + symptoms.
+        Returns the same rich result dict as the vision and heuristic paths.
+        """
+        from agents.ml_disease_model import get_ml_model
+        ml = get_ml_model()
+        ml_result = ml.predict(
+            crop_type=crop_type,
+            soil_ph=soil_ph,
+            soil_moisture=soil_moisture,
+            temperature=temperature,
+            humidity=humidity,
+            nitrogen=nitrogen,
+            rainfall=rainfall,
+            symptoms=symptoms,
+        )
+
+        if "error" in ml_result and not ml_result.get("disease_key"):
+            return {"error": ml_result["error"], "agent": self.name}
+
+        disease_key = ml_result["disease_key"]
+        confidence = int(round(ml_result["confidence"]))
+        is_diseased = (disease_key != "healthy")
+        top3 = ml_result.get("top_predictions", [])
+
+        # Second-best prediction becomes the alternative diagnosis
+        alternative = None
+        if len(top3) > 1:
+            second = top3[1]
+            if second["disease_key"] != "healthy" and second["confidence_pct"] > 10:
+                alt_db = DISEASE_DB.get(second["disease_key"], {})
+                alternative = {
+                    "disease": second["disease_key"],
+                    "display_name": alt_db.get("display_name", second["disease_key"]),
+                    "confidence": int(second["confidence_pct"]),
+                }
+
+        severity = self._estimate_severity(confidence, is_diseased)
+        reasoning = (
+            f"ML RandomForest prediction from sensor data — "
+            f"soil pH {soil_ph}, moisture {soil_moisture}%, "
+            f"temp {temperature}°C, humidity {humidity}%."
+        )
+
+        result = self._build_result(
+            is_diseased=is_diseased,
+            disease_key=disease_key,
+            confidence=confidence,
+            severity=severity,
+            symptoms=symptoms or [],
+            reasoning=reasoning,
+            crop_type=crop_type,
+            method="ML RandomForest Classifier (sensor + symptoms)",
+            alternative=alternative,
+        )
+        result["ml_top_predictions"] = top3
+        result["sensor_features"] = ml_result.get("features_used", {})
+        return result
 
     # ── Groq vision path ───────────────────────────────────────
 
@@ -907,6 +979,58 @@ class DiseaseDetectionAgent:
             result["alternative_diagnosis"] = alternative
 
         return result
+
+    # ── ML symptom path ────────────────────────────────────────
+
+    def _analyze_ml_symptoms(self, crop_type: str, symptoms: List[str]) -> Dict[str, Any]:
+        """Use the ML classifier to predict disease from symptom keywords."""
+        from agents.ml_disease_model import get_ml_model
+        ml = get_ml_model()
+        ml_result = ml.predict(crop_type=crop_type, symptoms=symptoms)
+
+        if "error" in ml_result:
+            return self._legacy_symptom(crop_type)
+
+        disease_key = ml_result["disease_key"]
+        confidence = int(round(ml_result["confidence"]))
+        is_diseased = (disease_key != "healthy")
+        top3 = ml_result.get("top_predictions", [])
+
+        alternative = None
+        if len(top3) > 1:
+            second = top3[1]
+            if second["disease_key"] != "healthy" and second["confidence_pct"] > 10:
+                alt_db = DISEASE_DB.get(second["disease_key"], {})
+                alternative = {
+                    "disease": second["disease_key"],
+                    "display_name": alt_db.get("display_name", second["disease_key"]),
+                    "confidence": int(second["confidence_pct"]),
+                }
+
+        severity = self._estimate_severity(confidence, is_diseased)
+        result = self._build_result(
+            is_diseased=is_diseased,
+            disease_key=disease_key,
+            confidence=confidence,
+            severity=severity,
+            symptoms=symptoms,
+            reasoning=f"ML classifier predicted from symptom keywords: {', '.join(symptoms)}.",
+            crop_type=crop_type,
+            method="ML RandomForest Classifier (symptoms)",
+            alternative=alternative,
+        )
+        result["ml_top_predictions"] = top3
+        return result
+
+    def _estimate_severity(self, confidence: int, is_diseased: bool) -> str:
+        """Map ML confidence to severity label."""
+        if not is_diseased:
+            return "none"
+        if confidence >= 80:
+            return "severe"
+        if confidence >= 60:
+            return "moderate"
+        return "mild"
 
     # ── Legacy ────────────────────────────────────────────────
 

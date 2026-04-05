@@ -101,6 +101,16 @@ class ImageDiseaseRequest(BaseModel):
     image_base64: str
     crop_type: str = "wheat"
 
+class MLDiseasePredictionRequest(BaseModel):
+    crop_type: str = "wheat"
+    soil_ph: float = 6.5
+    soil_moisture: float = 50.0
+    temperature: float = 25.0
+    humidity: float = 65.0
+    nitrogen: float = 100.0
+    rainfall: float = 5.0
+    symptoms: List[str] = []
+
 class YieldPredictionRequest(BaseModel):
     crop_type: str
     area_hectares: float
@@ -551,6 +561,30 @@ async def detect_disease_upload(
         error_msg = str(e).lower()
         if "image" in error_msg and "not support" in error_msg:
             return {"error": "This model does not support image input. Please use a vision-enabled model."}
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/predict_disease_ml")
+async def predict_disease_ml(request: MLDiseasePredictionRequest):
+    """
+    ML-powered crop disease prediction from sensor readings and symptom keywords.
+    Uses a RandomForest classifier trained on synthetic agronomic data.
+    Accepts structured inputs (soil pH, moisture, temperature, humidity, nitrogen,
+    rainfall, and optional symptom keywords) and returns a full disease report
+    with severity, treatment plan, spread prediction, and top-3 ML predictions.
+    """
+    try:
+        disease_agent = DiseaseDetectionAgent()
+        return disease_agent.analyze_from_features(
+            crop_type=request.crop_type,
+            soil_ph=request.soil_ph,
+            soil_moisture=request.soil_moisture,
+            temperature=request.temperature,
+            humidity=request.humidity,
+            nitrogen=request.nitrogen,
+            rainfall=request.rainfall,
+            symptoms=request.symptoms,
+        )
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/get_govt_schemes")
