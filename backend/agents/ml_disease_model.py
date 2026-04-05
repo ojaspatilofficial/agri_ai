@@ -83,7 +83,7 @@ FEATURE_NAMES: List[str] = [
 
 
 def encode_symptoms(symptoms: List[str]) -> List[int]:
-    """Convert a list of symptom description strings to a 9-element binary vector."""
+    """Convert a list of symptom description strings to a binary vector matching symptom groups."""
     text = " ".join(symptoms).lower()
     return [1 if any(kw in text for kw in kws) else 0 for _, kws in _SYMPTOM_KEYWORD_GROUPS]
 
@@ -274,7 +274,7 @@ def _generate_training_data() -> "Tuple[np.ndarray, np.ndarray]":
                 v = float(np.clip(np_rng.normal(mu, sigma), lo, hi))
                 cond_vals.append(v)
 
-            # Add 15 % random flip noise to symptom flags for realism
+            # Add 15% random flip noise to symptom flags for realism
             sym = [
                 max(0, min(1, s + (rng.choice([-1, 1]) if rng.random() < 0.15 else 0)))
                 for s in prof["symptoms"]
@@ -403,7 +403,7 @@ _ml_model: Optional[CropDiseaseMLModel] = None
 
 
 def get_ml_model() -> CropDiseaseMLModel:
-    """Return the shared (lazily initialised) ML model instance."""
+    """Return the shared (lazily initialized) ML model instance."""
     global _ml_model
     if _ml_model is None:
         _ml_model = CropDiseaseMLModel()

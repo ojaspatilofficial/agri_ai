@@ -643,6 +643,9 @@ def _call_groq_vision(image_b64: str, crop_type: str, api_key: str) -> Optional[
 # ═══════════════════════════════════════════════════════════════
 # MAIN AGENT CLASS
 # ═══════════════════════════════════════════════════════════════
+_MIN_ALT_CONFIDENCE = 10  # minimum % for an alternative diagnosis to be reported
+
+
 class DiseaseDetectionAgent:
     """
     AI crop disease detector.
@@ -721,7 +724,7 @@ class DiseaseDetectionAgent:
         alternative = None
         if len(top3) > 1:
             second = top3[1]
-            if second["disease_key"] != "healthy" and second["confidence_pct"] > 10:
+            if second["disease_key"] != "healthy" and second["confidence_pct"] > _MIN_ALT_CONFIDENCE:
                 alt_db = DISEASE_DB.get(second["disease_key"], {})
                 alternative = {
                     "disease": second["disease_key"],
@@ -999,7 +1002,7 @@ class DiseaseDetectionAgent:
         alternative = None
         if len(top3) > 1:
             second = top3[1]
-            if second["disease_key"] != "healthy" and second["confidence_pct"] > 10:
+            if second["disease_key"] != "healthy" and second["confidence_pct"] > _MIN_ALT_CONFIDENCE:
                 alt_db = DISEASE_DB.get(second["disease_key"], {})
                 alternative = {
                     "disease": second["disease_key"],
