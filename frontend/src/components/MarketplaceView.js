@@ -19,12 +19,13 @@ const MarketplaceView = () => {
     fetchMarketData();
   }, []);
 
-  const fetchMarketData = async () => {
+  const fetchMarketData = async (selectedState = '') => {
     try {
       setLoading(true);
       setError(null);
       
-      const response = await axios.get(API_URL);
+      const url = selectedState ? `${API_URL}?state=${selectedState}` : API_URL;
+      const response = await axios.get(url);
       
       if (response.data && response.data.records) {
         setData(response.data.records);
@@ -117,7 +118,11 @@ const MarketplaceView = () => {
           </label>
           <select 
             value={stateFilter} 
-            onChange={(e) => setStateFilter(e.target.value)}
+            onChange={(e) => {
+              const newState = e.target.value;
+              setStateFilter(newState);
+              fetchMarketData(newState);
+            }}
             style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #cbd5e1', outline: 'none' }}
           >
             <option value="">All States</option>

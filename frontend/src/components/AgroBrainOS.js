@@ -7,6 +7,7 @@ function AgroBrainOS({ apiUrl, farmId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showAgentData, setShowAgentData] = useState(false);
+  const [selectedCrop, setSelectedCrop] = useState(null);
 
   // Copilot
   const [chatMessage, setChatMessage] = useState('');
@@ -14,15 +15,22 @@ function AgroBrainOS({ apiUrl, farmId }) {
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef(null);
 
-  const fetchOSData = async () => {
+  const fetchOSData = async (cropType = null) => {
     try {
       setLoading(true);
       setError(null);
-      const response = await axios.get(`${apiUrl}/agrobrain_os_data`, {
-        params: { farm_id: farmId }
-      });
+      const params = { farm_id: farmId };
+      if (cropType || selectedCrop) {
+        params.crop_type = cropType || selectedCrop;
+      }
+      
+      const response = await axios.get(`${apiUrl}/agrobrain_os_data`, { params });
+      
       if (response.data?.data) {
         setData(response.data.data);
+        if (response.data.data.selected_crop && !selectedCrop) {
+          setSelectedCrop(response.data.data.selected_crop);
+        }
       } else {
         setError('No data returned from server.');
       }
@@ -34,7 +42,7 @@ function AgroBrainOS({ apiUrl, farmId }) {
     }
   };
 
-  useEffect(() => { fetchOSData(); }, [apiUrl, farmId]);
+  useEffect(() => { fetchOSData(selectedCrop); }, [apiUrl, farmId, selectedCrop]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -111,8 +119,28 @@ function AgroBrainOS({ apiUrl, farmId }) {
           <h2>🧠 AgroBrain OS</h2>
           <p>Your Farm Decision Engine — Powered by Groq AI</p>
         </div>
-        <div className="ab-controls">
-          <button className="ab-btn-refresh" onClick={fetchOSData} disabled={loading}>
+        <div className="ab-controls" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {data.available_crops && data.available_crops.length > 0 && (
+            <select 
+              value={selectedCrop || data.selected_crop || data.available_crops[0]} 
+              onChange={(e) => setSelectedCrop(e.target.value)}
+              style={{
+                padding: '0.5rem 1rem',
+                borderRadius: '8px',
+                border: '1px solid #d1d5db',
+                background: 'white',
+                fontWeight: '500',
+                color: '#374151',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              {data.available_crops.map(crop => (
+                <option key={crop} value={crop}>{crop}</option>
+              ))}
+            </select>
+          )}
+          <button className="ab-btn-refresh" onClick={() => fetchOSData(selectedCrop)} disabled={loading}>
             {loading ? '⏳' : '↻'} Refresh
           </button>
         </div>

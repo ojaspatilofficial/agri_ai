@@ -34,7 +34,7 @@ except ImportError:
 
 # ── Groq API config ────────────────────────────────────────────
 GROQ_BASE_URL   = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL      = "llama-3.2-90b-vision-preview"
+GROQ_MODEL      = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 def _load_groq_key() -> str:
     """Read Groq key from api_config.json or env."""

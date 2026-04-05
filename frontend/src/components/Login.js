@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './Login.css';
 
-function Login({ onLogin }) {
+function Login({ onLogin, onAdminClick }) {
   const [mode, setMode] = useState('login'); // 'login' or 'register'
   const [formData, setFormData] = useState({
     farmerId: '',
@@ -365,9 +365,14 @@ function Login({ onLogin }) {
                 <span>{t.or}</span>
               </div>
 
-              <button type="button" onClick={handleDemoLogin} className="demo-button" disabled={loading}>
-                ✨ {t.demoButton}
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <button type="button" onClick={handleDemoLogin} className="demo-button" disabled={loading}>
+                  ✨ {t.demoButton}
+                </button>
+                <button type="button" onClick={onAdminClick} className="demo-button" disabled={loading} style={{ background: '#374151', color: 'white', border: 'none' }}>
+                  🛡️ Admin Portal
+                </button>
+              </div>
             </>
           )}
         </form>

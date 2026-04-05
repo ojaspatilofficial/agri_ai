@@ -12,9 +12,10 @@ GROQ_MODEL = "llama-3.1-8b-instant"
 
 
 class AgroBrainAgent:
-    def __init__(self, db, llm_orchestrator):
+    def __init__(self, db, llm_orchestrator, auth_system=None):
         self.db = db
         self.llm = llm_orchestrator
+        self.auth_system = auth_system
 
     # ─────────────────────────────────────────────────────────────────
     # HELPERS
@@ -27,20 +28,37 @@ class AgroBrainAgent:
         return None
 
     async def _get_farm_context(self, farm_id: str) -> Dict:
-        """Pull sensors, crops, and recent recommendations."""
+        """Pull sensors, crops, and recent recommendations with Moving Average stabilization."""
         ctx = {"sensors": {}, "crop": {}, "recent_recs": []}
 
         try:
-            readings = await self.db.get_latest_readings(farm_id, limit=1)
+            # Fetch last 10 readings to calculate a Moving Average (Stabilization)
+            readings = await self.db.get_latest_readings(farm_id, limit=10)
             if readings:
-                ctx["sensors"] = readings[0]
+                # Smoothing logic for stable UI (Health Score stabilization)
+                smoothed = {}
+                keys_to_average = [
+                    "soil_moisture", "soil_temperature", "soil_ph",
+                    "npk_nitrogen", "npk_phosphorus", "npk_potassium",
+                    "humidity", "air_temperature", "rainfall", "light_intensity"
+                ]
+                
+                for key in keys_to_average:
+                    values = [r.get(key) for r in readings if r.get(key) is not None]
+                    if values:
+                        smoothed[key] = round(sum(values) / len(values), 2)
+                    else:
+                        smoothed[key] = readings[0].get(key)
+                
+                ctx["sensors"] = smoothed
+                ctx["sensors"]["timestamp"] = readings[0].get("timestamp")
         except Exception as e:
             print(f"[AgroBrain] sensor read error: {e}")
 
         try:
             crops = await self.db.get_crops(farm_id)
             if crops:
-                ctx["crop"] = crops[0]
+                ctx["crops"] = crops
         except Exception as e:
             print(f"[AgroBrain] crop read error: {e}")
 
@@ -53,30 +71,80 @@ class AgroBrainAgent:
         except Exception as e:
             print(f"[AgroBrain] recs read error: {e}")
 
+        try:
+            if self.auth_system:
+                ctx["profile"] = await self.auth_system.get_farmer_profile(farm_id)
+        except Exception as e:
+            print(f"[AgroBrain] profile read error: {e}")
+
         return ctx
 
     # ─────────────────────────────────────────────────────────────────
     # MAIN DASHBOARD
     # ─────────────────────────────────────────────────────────────────
 
-    async def generate_os_dashboard(self, farm_id: str) -> Dict[str, Any]:
+    async def generate_os_dashboard(self, farm_id: str, crop_type: str = None) -> Dict[str, Any]:
+        from .yield_prediction_agent import YieldPredictionAgent
         ctx = await self._get_farm_context(farm_id)
         s = ctx["sensors"]
-        crop = ctx["crop"]
-
-        crop_name = crop.get("crop_type", "Unknown crop")
-        area = float(crop.get("area_hectares", 1.0))
-        planted_date = crop.get("planted_date", "")
-        expected_harvest = crop.get("expected_harvest", "")
-
-        # Compute days to harvest
-        days_to_harvest = None
-        if expected_harvest:
-            try:
-                h = datetime.fromisoformat(expected_harvest[:10])
-                days_to_harvest = max(0, (h - datetime.now()).days)
-            except:
-                pass
+        profile = ctx.get("profile", {})
+        db_crops = ctx.get("crops", [])
+        
+        # Resolve crops from both database crops table AND farmer profile
+        available_crops = []
+        
+        # 1. From Crops table
+        if db_crops:
+            for c in db_crops:
+                name = c.get("crop_type")
+                if name:
+                    normalized = name.strip().title()
+                    if normalized and normalized not in available_crops:
+                        available_crops.append(normalized)
+        
+        # 2. From Profile field (comma separated string)
+        profile_crops = profile.get("crops_names", "") if profile else ""
+        if profile_crops:
+            for name in str(profile_crops).split(","):
+                normalized = name.strip().title()
+                if normalized and normalized not in available_crops:
+                    available_crops.append(normalized)
+                        
+        if not available_crops:
+            available_crops = ["Wheat"]
+            
+        current_crop = (crop_type.title() if crop_type else available_crops[0])
+        
+        if current_crop not in available_crops:
+            available_crops.insert(0, current_crop)
+            
+        crop_name = current_crop
+        
+        # Determine area_hectares matching the selected crop from db_crops
+        matching_crop = next((c for c in db_crops if c.get("crop_type", "").title() == current_crop), None)
+        if matching_crop and matching_crop.get("area_hectares"):
+            area = float(matching_crop["area_hectares"])
+        else:
+            # Fallback to total farmer profile acres if individual crop area missing
+            acres = profile.get("total_land_area_acres") if profile else None
+            area = float(acres) * 0.404686 if acres and float(acres) > 0 else 1.0
+        
+        # Calculate true yield and prices
+        yp_agent = YieldPredictionAgent(self.db)
+        yield_data = yp_agent.predict_yield(crop_name, area, "good")
+        market_val = yield_data["market_estimate"]
+        expected_yield = yield_data["expected_yield_tons"]
+        price_per_q = market_val["estimated_price_per_quintal"]
+        total_market_val = market_val["total_estimated_value"]
+        
+        ctx["resolved_crop"] = {
+            "name": crop_name,
+            "area": area,
+            "yield_tons": expected_yield,
+            "price_per_q": price_per_q,
+            "total_val": total_market_val,
+            "available_crops": available_crops
+        }
 
         client = self._groq()
         if client is None:
@@ -91,13 +159,16 @@ Air Temp: {s.get('air_temperature', 'N/A')} °C
 Humidity: {s.get('humidity', 'N/A')}%
 Rainfall: {s.get('rainfall', 'N/A')} mm
 NPK — Nitrogen: {s.get('npk_nitrogen', 'N/A')} mg/kg, Phosphorus: {s.get('npk_phosphorus', 'N/A')} mg/kg, Potassium: {s.get('npk_potassium', 'N/A')} mg/kg
-Crop: {crop_name}, Area: {area} hectares, Stage: {crop.get('status','growing')}
-Days to harvest: {days_to_harvest if days_to_harvest is not None else 'unknown'}
+Crop: {crop_name}, Area: {area:.2f} hectares
+Calculated Target Yield: {expected_yield} tons
+Calculated Price: ₹{price_per_q}/quintal
 Recent agent alerts: {json.dumps(ctx['recent_recs'])}
 """
 
         prompt = f"""You are AgroBrain OS, a precision agriculture AI.
 Using ONLY the sensor data below (no guessing), return VALID JSON matching the schema exactly.
+STABILITY RULE: The health_score should be stable and conservative. Do not fluctuate significantly 
+unless a clear trend is established in the sensor data over time.
 
 SENSOR DATA:
 {sensor_summary}
@@ -143,16 +214,16 @@ SCHEMA (return exactly this structure, replace placeholder values with reality):
       "risk_level": "<none|low|medium|high based on humidity+temp>"
     }},
     "yield_prediction": {{
-      "expected_yield": "<Xtons calculated from area*base_yield*health_factor>",
-      "harvest_date": "<{expected_harvest[:10] if expected_harvest else 'TBD'}>",
-      "days_to_harvest": {days_to_harvest if days_to_harvest is not None else 90},
-      "market_value": "<estimate in ₹ based on crop>"
+      "expected_yield": "{expected_yield} tons",
+      "harvest_date": "TBD",
+      "days_to_harvest": 90,
+      "market_value": "₹{int(total_market_val):,}"
     }},
     "market_prices": {{
-      "current_price": "<estimate for {crop_name}>/quintal in ₹",
+      "current_price": "₹{price_per_q}/quintal",
       "trend": "<rising|stable|falling>",
       "best_sell_window": "<date approximately 10 days from now>",
-      "expected_price": "<slightly higher estimate>/quintal in ₹"
+      "expected_price": "₹{price_per_q + 50}/quintal"
     }},
     "sustainability": {{
       "green_score": "<X/100 based on water efficiency and chemical use>",
@@ -194,6 +265,9 @@ SCHEMA (return exactly this structure, replace placeholder values with reality):
             )
             raw = response.choices[0].message.content
             data = json.loads(raw)
+            data["available_crops"] = ctx.get("resolved_crop", {}).get("available_crops", ["Wheat"])
+            data["selected_crop"] = ctx.get("resolved_crop", {}).get("name", "Wheat")
+            
             print("[AgroBrain] ✅ Dashboard JSON generated successfully.")
             return {"source": "groq_llm", "status": "success", "data": data,
                     "metadata": {"model": GROQ_MODEL, "timestamp": datetime.now().isoformat()}}
@@ -204,14 +278,19 @@ SCHEMA (return exactly this structure, replace placeholder values with reality):
     def _fallback_dashboard(self, ctx: Dict) -> Dict:
         """Deterministic fallback using real sensor math."""
         s = ctx["sensors"]
-        crop = ctx["crop"]
+        rc = ctx.get("resolved_crop", {})
+        
         moisture = s.get("soil_moisture", 50)
         ph = s.get("soil_ph", 7.0)
         n = s.get("npk_nitrogen", 50)
         temp = s.get("air_temperature", 25)
         humidity = s.get("humidity", 60)
-        area = float(crop.get("area_hectares", 1.0))
-        crop_name = crop.get("crop_type", "crop")
+        
+        area = rc.get("area", 1.0)
+        crop_name = rc.get("name", "Wheat")
+        price_per_q = rc.get("price_per_q", 2000)
+        total_market_val = rc.get("total_val", 200000)
+        expected_yield = rc.get("yield_tons", 3.0)
 
         # Real health calculation
         score = 100.0
@@ -276,16 +355,16 @@ SCHEMA (return exactly this structure, replace placeholder values with reality):
                         "risk_level": "high" if humidity > 85 and temp > 28 else "medium" if humidity > 70 else "none"
                     },
                     "yield_prediction": {
-                        "expected_yield": f"{round(area * 3.0 * (score / 100), 2)} tons",
-                        "harvest_date": crop.get("expected_harvest", "TBD"),
+                        "expected_yield": f"{expected_yield} tons",
+                        "harvest_date": "TBD",
                         "days_to_harvest": 90,
-                        "market_value": f"₹{int(area * 3000 * 22):,}"
+                        "market_value": f"₹{int(total_market_val):,}"
                     },
                     "market_prices": {
-                        "current_price": "₹2200/quintal",
+                        "current_price": f"₹{price_per_q}/quintal",
                         "trend": "stable",
                         "best_sell_window": (datetime.now() + timedelta(days=10)).strftime("%Y-%m-%d"),
-                        "expected_price": "₹2350/quintal"
+                        "expected_price": f"₹{price_per_q + 50}/quintal"
                     },
                     "sustainability": {
                         "green_score": f"{int(score * 0.6)}/100",
@@ -301,7 +380,9 @@ SCHEMA (return exactly this structure, replace placeholder values with reality):
                     {"priority": "HIGH" if moisture < 30 else "LOW", "message": f"Soil moisture at {moisture:.1f}%"},
                     {"priority": "MEDIUM" if n < 40 else "LOW", "message": f"Nitrogen at {n:.1f} mg/kg"}
                 ]
-            }
+            },
+            "available_crops": ctx.get("resolved_crop", {}).get("available_crops", ["Wheat"]),
+            "selected_crop": crop_name
         }
 
     # ─────────────────────────────────────────────────────────────────

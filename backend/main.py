@@ -69,8 +69,8 @@ app.add_middleware(
 # Initialize components
 db = AsyncDatabase(API_CONFIG["database_url"])
 auth_system = AuthSystem(db)
-lead_agent = LeadAgent(db)
-agrobrain_agent = AgroBrainAgent(db, lead_agent.llm)
+lead_agent = LeadAgent(db, auth_system=auth_system)
+agrobrain_agent = AgroBrainAgent(db, lead_agent.llm, auth_system=auth_system)
 
 # Initialize specialized agents
 market_forecast_agent = MarketForecastAgent(api_key=API_CONFIG.get('data_gov_api_key'))
@@ -112,6 +112,8 @@ class CropRequest(BaseModel):
     planted_date: Optional[str] = None
     area_hectares: float = 1.0
     status: str = "growing"
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 class CropStatusUpdate(BaseModel):
     status: str
@@ -130,6 +132,9 @@ class RegisterRequest(BaseModel):
     longitude: Optional[float] = None
     farm_size: Optional[float] = None
     language: str = "en"
+    soil_type: Optional[str] = None
+    irrigation_source: Optional[str] = None
+    is_organic: Optional[bool] = False
 
 class FarmDetailsRequest(BaseModel):
     total_land_area_acres: Optional[float] = None
@@ -137,6 +142,8 @@ class FarmDetailsRequest(BaseModel):
     crops_names: Optional[str] = None
     sowing_date: Optional[str] = None
     sowed_land_area_acres: Optional[float] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 class LoginRequest(BaseModel):
     email: Optional[str] = None
@@ -218,6 +225,12 @@ class BasicProfileUpdate(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    location: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    soil_type: Optional[str] = None
+    irrigation_source: Optional[str] = None
+    is_organic: Optional[bool] = None
 
 @app.put("/profile/update_basic")
 async def update_basic_profile(request: BasicProfileUpdate, farm_id: str = "FARM001"):
@@ -375,16 +388,19 @@ async def get_weather_advisory(location: str = "Pune", farm_id: str = "FARM001")
             "error": forecast_raw.get("error", "No forecast data"),
         }
 
-    # 3. Get optional farm context to personalise advice
+    # 3. Get optional farm context to personalise advice (Using Smoothing for stability)
     sensor_ctx = {}
     try:
-        readings = await db.get_latest_readings(farm_id, limit=1)
+        readings = await db.get_latest_readings(farm_id, limit=10)
         if readings:
-            r = readings[0]
+            m = sum([r.get("soil_moisture", 0) for r in readings]) / len(readings)
+            p = sum([r.get("soil_ph", 7) for r in readings]) / len(readings)
+            n = sum([r.get("npk_nitrogen", 0) for r in readings]) / len(readings)
+            
             sensor_ctx = {
-                "soil_moisture": r.get("soil_moisture"),
-                "soil_ph": r.get("soil_ph"),
-                "npk_nitrogen": r.get("npk_nitrogen"),
+                "soil_moisture": round(m, 2),
+                "soil_ph": round(p, 2),
+                "npk_nitrogen": round(n, 2),
             }
     except Exception:
         pass
@@ -493,17 +509,12 @@ async def get_market_forecast(crop: str = "wheat"):
     return market_forecast_agent.forecast_prices(crop)
 
 @app.get("/api/marketplace")
-async def get_marketplace():
-    import requests
-    api_key = "579b464db66ec23bdd0000015f2ca629512847084dc2eb14b8c78d92"
-    url = f"https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070?api-key={api_key}&format=json&limit=1000"
-    try:
-        response = requests.get(url, timeout=10)
-        if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail="Failed to fetch data from data.gov.in")
-        return response.json()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def get_marketplace(state: Optional[str] = None):
+    """Fetch live mandi prices from data.gov.in via LiveMandiAgent."""
+    # Trigger refresh: picks up dynamic API key from config.py
+    from agents.live_mandi_agent import LiveMandiAgent
+    agent = LiveMandiAgent()
+    return agent.get_full_market_data(state=state)
 
 @app.post("/predict_yield")
 async def predict_yield(request: YieldPredictionRequest):
@@ -574,7 +585,7 @@ async def drone_analysis(farm_id: str = "FARM001", lat: float = None, lon: float
     return drone_agent.analyze_farm(farm_id, latitude=lat, longitude=lon)
 
 @app.get("/farm_analytics")
-async def get_farm_analytics(farm_id: str = "FARM001"):
+async def get_farm_analytics(farm_id: str = "FARM001", crop_type: Optional[str] = None):
     """Returns comprehensive Farm Analytics Power-Tab data"""
     analytics_agent = FarmAnalyticsAgent(db)
     
@@ -584,12 +595,12 @@ async def get_farm_analytics(farm_id: str = "FARM001"):
     except Exception:
         profile = None
         
-    return await analytics_agent.generate_full_report(farm_id, profile)
+    return await analytics_agent.generate_full_report(farm_id, profile, crop_type=crop_type)
 
 @app.get("/agrobrain_os_data")
-async def get_agrobrain_os_data(farm_id: str = "FARM001"):
+async def get_agrobrain_os_data(farm_id: str = "FARM001", crop_type: Optional[str] = None):
     """Returns the true AgroBrain OS LLM payload"""
-    return await agrobrain_agent.generate_os_dashboard(farm_id)
+    return await agrobrain_agent.generate_os_dashboard(farm_id, crop_type=crop_type)
 
 @app.post("/copilot_chat")
 async def copilot_chat(request: CopilotRequest):
@@ -804,6 +815,8 @@ async def submit_action_log(
     action_details: str = Form(""),
     green_tokens: int = Form(0),
     image: Optional[UploadFile] = File(None),
+    provided_lat: Optional[float] = Form(None),
+    provided_lon: Optional[float] = Form(None),
 ):
     """
     Submit a farming action with optional proof image.
@@ -863,15 +876,36 @@ async def submit_action_log(
                 allowed_radius_m = 600.0
 
 
-        # Run geo verification
+        # Run geo-verification
         geo_result = verify_geo(image_bytes, farm_lat, farm_lon, allowed_radius_m)
-        proof_lat = geo_result.get("proof_latitude")
-        proof_lon = geo_result.get("proof_longitude")
-        distance_meters = geo_result.get("distance_meters")
+        
+        # Override with real-time Browser Coordinates if provided (Actual Live Geolocation)
+        if provided_lat is not None and provided_lon is not None:
+            proof_lat = provided_lat
+            proof_lon = provided_lon
+            # Recalculate distance based on the live coordinates
+            from core.geo_verifier import haversine
+            if farm_lat is not None and farm_lon is not None:
+                distance_meters = haversine(proof_lat, proof_lon, farm_lat, farm_lon)
+            else:
+                distance_meters = 0.0
+            
+            # Update geo_result to be based on the actual live coordinates
+            geo_result["proof_latitude"] = proof_lat
+            geo_result["proof_longitude"] = proof_lon
+            geo_result["distance_meters"] = distance_meters
+            geo_result["passed"] = distance_meters <= allowed_radius_m
+            geo_result["verification_level"] = "L2_GEO_VERIFIED" if geo_result["passed"] else "verification_failed"
+            geo_result["reason"] = f"Live GPS: {distance_meters:.1f}m from farm"
+        else:
+            proof_lat = geo_result.get("proof_latitude")
+            proof_lon = geo_result.get("proof_longitude")
+            distance_meters = geo_result.get("distance_meters")
+
         verification_reason = geo_result.get("reason", "")
         image_metadata["exif_datetime"] = geo_result["exif"].get("datetime")
         image_metadata["exif_device"] = f"{geo_result['exif'].get('make','')} {geo_result['exif'].get('model','')}".strip()
-        image_metadata["has_gps"] = geo_result["exif"].get("has_gps", False)
+        image_metadata["has_gps"] = geo_result["exif"].get("has_gps", False) or (provided_lat is not None)
 
         if geo_result["passed"]:
             verification_level = "L2_GEO_VERIFIED"
@@ -881,7 +915,7 @@ async def submit_action_log(
         else:
             verification_level = geo_result.get("verification_level", "verification_failed")
             # If coordinates were missing entirely, status=geo_failed, otherwise detail the level
-            verification_status = "geo_failed" if not geo_result["exif"].get("has_gps") else "geo_radius_exceeded"
+            verification_status = "geo_failed" if not (geo_result["exif"].get("has_gps") or provided_lat) else "geo_radius_exceeded"
             token_request_status = "pending" # Manual review / Video verification needed
             geo_match_passed = False
     else:

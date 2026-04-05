@@ -132,23 +132,48 @@ class FarmAnalyticsAgent:
         else:
             return f"Your farm metrics are trailing behind the {state or 'your region'} average."
 
-    async def generate_full_report(self, farm_id: str, profile: Dict = None) -> Dict[str, Any]:
+    async def generate_full_report(self, farm_id: str, profile: Dict = None, crop_type: str = None) -> Dict[str, Any]:
         """Compiles all analytics into a single rich response"""
         try:
             readings = await self.db.get_latest_readings(farm_id, limit=1)
             current_sensors = readings[0] if readings else {}
             
-            crops = await self.db.get_crops(farm_id)
-            current_crop = crops[0].get("crop_type", "Wheat") if crops else "Wheat"
-            area = float(crops[0].get("area_hectares", 1.0)) if crops else 1.0
+            # Fetch crops from DB directly
+            db_crops = await self.db.get_crops(farm_id)
             
+            # --- Multi-Crop and Acre Conversions ---
+            available_crops = []
+            
+            if db_crops:
+                for c in db_crops:
+                    if c.get("crop_type"):
+                        normalized_name = c["crop_type"].title()
+                        if normalized_name not in available_crops:
+                            available_crops.append(normalized_name)
+                            
+            if not available_crops:
+                available_crops = ["Wheat"]
+                
+            current_crop = (crop_type.title() if crop_type else available_crops[0])
+            if current_crop not in available_crops:
+                available_crops.insert(0, current_crop)
+
+            # Determine area_hectares matching the selected crop
+            matching_crop = next((c for c in db_crops if c.get("crop_type", "").title() == current_crop), None)
+            if matching_crop and matching_crop.get("area_hectares"):
+                area_hectares = float(matching_crop["area_hectares"])
+            else:
+                acres = profile.get("total_land_area_acres") if profile else None
+                area_hectares = float(acres) * 0.404686 if acres and float(acres) > 0 else 1.0
+
             state = profile.get("location", "Maharashtra") if profile else "Maharashtra"
+            # ---------------------------------------
             
             health = self.calculate_health_score(current_sensors, current_crop)
-            yield_pred = self.predict_yield_trends(current_crop, area, health["score"])
-            costs = self.analyze_costs(current_crop, area)
+            yield_pred = self.predict_yield_trends(current_crop.lower(), area_hectares, health["score"])
+            costs = self.analyze_costs(current_crop.lower(), area_hectares)
             anomalies = self.detect_anomalies(current_sensors)
-            rotation = self.crop_rotation_strategy(current_crop)
+            rotation = self.crop_rotation_strategy(current_crop.lower())
             benchmark = self.regional_benchmarking(state, health["score"])
             
             return {
@@ -158,6 +183,9 @@ class FarmAnalyticsAgent:
                 "anomalies": anomalies,
                 "crop_rotation": rotation,
                 "benchmarking": benchmark,
+                "available_crops": available_crops,
+                "selected_crop": current_crop,
+                "farm_area_hectares": round(area_hectares, 2),
                 "timestamp": datetime.now().isoformat()
             }
         except Exception as e:

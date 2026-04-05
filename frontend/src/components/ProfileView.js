@@ -136,11 +136,30 @@ function ProfileView({ farmer, apiUrl }) {
 
   const openProfileForm = () => {
     setProfileForm({
-      name: farmerProfile?.name || '',
+      name: farmerProfile?.name || farmer?.name || '',
       total_land_area_acres: farmerProfile?.total_land_area_acres?.toString() || '',
       phone: farmerProfile?.phone || '',
-      email: farmerProfile?.email || ''
+      email: farmerProfile?.email || '',
+      location: farmerProfile?.location || '',
+      soil_type: farmerProfile?.soil_type || '',
+      irrigation_source: farmerProfile?.irrigation_source || '',
+      is_organic: farmerProfile?.is_organic || false,
+      latitude: farmerProfile?.latitude?.toString() || '',
+      longitude: farmerProfile?.longitude?.toString() || ''
     });
+
+    // Auto-fetch location if missing
+    if (!farmerProfile?.latitude || !farmerProfile?.longitude) {
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition((position) => {
+          setProfileForm(prev => ({
+            ...prev,
+            latitude: position.coords.latitude.toString(),
+            longitude: position.coords.longitude.toString()
+          }));
+        }, (err) => console.log("Geolocation error:", err));
+      }
+    }
     setShowProfileForm(true);
   };
 
@@ -159,7 +178,13 @@ function ProfileView({ farmer, apiUrl }) {
       await axios.put(`${apiUrl}/profile/update_basic?farm_id=${farmId}`, {
         name: profileForm.name,
         phone: profileForm.phone,
-        email: profileForm.email
+        email: profileForm.email,
+        location: profileForm.location,
+        soil_type: profileForm.soil_type,
+        irrigation_source: profileForm.irrigation_source,
+        is_organic: profileForm.is_organic,
+        latitude: profileForm.latitude ? parseFloat(profileForm.latitude) : null,
+        longitude: profileForm.longitude ? parseFloat(profileForm.longitude) : null
       });
       
       setShowProfileForm(false);
@@ -229,6 +254,9 @@ function ProfileView({ farmer, apiUrl }) {
               { icon: '📍', text: farmerProfile?.location || 'Pune, Maharashtra' },
               { icon: '📐', text: farmSizeAcres + ' acres' },
               { icon: '🌐', text: `${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E` },
+              { icon: '🌱', text: farmerProfile?.soil_type || 'Loamy' },
+              { icon: '💧', text: farmerProfile?.irrigation_source || 'Borewell' },
+              { icon: '🟢', text: farmerProfile?.is_organic ? 'Organic Certified' : 'Conventional' },
             ].map((badge, i) => (
               <span key={i} style={{
                 background: 'rgba(255,255,255,0.2)',
@@ -707,6 +735,53 @@ function ProfileView({ farmer, apiUrl }) {
                   placeholder="e.g., farmer@email.com"
                   style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #d1d5db', fontSize: '1rem' }}
                 />
+              </div>
+
+              {/* Grounding Fields Section */}
+              <div style={{ padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem', border: '1px solid #f3f4f6', marginTop: '0.5rem' }}>
+                <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: '#059669' }}>🌍 Farm Grounding</h4>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', marginBottom: '0.2rem' }}>Soil Type</label>
+                    <select name="soil_type" value={profileForm.soil_type} onChange={handleProfileFormChange} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid #d1d5db' }}>
+                      <option value="">Select...</option>
+                      <option value="Loamy">Loamy</option>
+                      <option value="Clay">Clay</option>
+                      <option value="Sandy">Sandy</option>
+                      <option value="Black">Black</option>
+                      <option value="Red">Red</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', marginBottom: '0.2rem' }}>Irrigation</label>
+                    <select name="irrigation_source" value={profileForm.irrigation_source} onChange={handleProfileFormChange} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid #d1d5db' }}>
+                      <option value="">Select...</option>
+                      <option value="Borewell">Borewell</option>
+                      <option value="Canal">Canal</option>
+                      <option value="Rainfed">Rainfed</option>
+                      <option value="Drip">Drip</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '0.75rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                    <input type="checkbox" name="is_organic" checked={profileForm.is_organic} onChange={(e) => setProfileForm(prev => ({ ...prev, is_organic: e.target.checked }))} />
+                    Certified Organic Farm
+                  </label>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', marginBottom: '0.2rem' }}>Lat</label>
+                    <input type="text" name="latitude" value={profileForm.latitude} onChange={handleProfileFormChange} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid #d1d5db' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', marginBottom: '0.2rem' }}>Lon</label>
+                    <input type="text" name="longitude" value={profileForm.longitude} onChange={handleProfileFormChange} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid #d1d5db' }} />
+                  </div>
+                </div>
               </div>
             </div>
 

@@ -491,32 +491,37 @@ function DiseaseScanner() {
 // ============================================================
 // MAIN CROPS MANAGER COMPONENT
 // ============================================================
-function CropsManager() {
+function CropsManager({ farmId, apiUrl }) {
   const [crops, setCrops] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
+
+  const effectiveApiUrl = apiUrl || API_URL;
+  const effectiveFarmId = farmId || 'FARM001';
 
   const [newCrop, setNewCrop] = useState({
     crop_type: '',
     planted_date: '',
     expected_harvest_date: '',
     area_hectares: '',
-    status: 'growing'
+    status: 'growing',
+    latitude: '',
+    longitude: ''
   });
 
   useEffect(() => {
     fetchCrops();
     const interval = setInterval(fetchCrops, 30000);
     return () => clearInterval(interval);
-  }, [filterStatus]);
+  }, [filterStatus, effectiveFarmId]);
 
   const fetchCrops = async () => {
     try {
       const timestamp = new Date().getTime();
       const statusParam = filterStatus !== 'all' ? `&status=${filterStatus}` : '';
       const response = await axios.get(
-        `${API_URL}/crops?farm_id=FARM001${statusParam}&_t=${timestamp}`,
+        `${effectiveApiUrl}/crops?farm_id=${effectiveFarmId}${statusParam}&_t=${timestamp}`,
         { headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' } }
       );
       setCrops(response.data.crops || []);
@@ -529,14 +534,27 @@ function CropsManager() {
     e.preventDefault();
     setLoading(true);
     try {
-      await axios.post(`${API_URL}/crops`, {
-        farm_id: 'FARM001',
+      const lat = newCrop.latitude || (18.5 + Math.random() * 0.1).toFixed(4);
+      const lon = newCrop.longitude || (73.8 + Math.random() * 0.1).toFixed(4);
+
+      await axios.post(`${effectiveApiUrl}/crops`, {
+        farm_id: effectiveFarmId,
         ...newCrop,
-        area_hectares: parseFloat(newCrop.area_hectares)
+        area_hectares: parseFloat(newCrop.area_hectares),
+        latitude: parseFloat(lat),
+        longitude: parseFloat(lon)
       });
       alert('✅ Crop added successfully!');
       setShowAddForm(false);
-      setNewCrop({ crop_type: '', planted_date: '', expected_harvest_date: '', area_hectares: '', status: 'growing' });
+      setNewCrop({ 
+        crop_type: '', 
+        planted_date: '', 
+        expected_harvest_date: '', 
+        area_hectares: '', 
+        status: 'growing',
+        latitude: '',
+        longitude: ''
+      });
       fetchCrops();
     } catch (error) {
       alert('❌ Error adding crop. Please try again.');
@@ -547,7 +565,7 @@ function CropsManager() {
 
   const updateCropStatus = async (cropId, newStatus) => {
     try {
-      await axios.put(`${API_URL}/crops/${cropId}/status?status=${newStatus}`);
+      await axios.put(`${effectiveApiUrl}/crops/${cropId}/status?status=${newStatus}`);
       alert(`✅ Crop status updated to ${newStatus}!`);
       fetchCrops();
     } catch (error) {
@@ -558,7 +576,7 @@ function CropsManager() {
   const deleteCrop = async (cropId) => {
     if (window.confirm('Are you sure you want to delete this crop?')) {
       try {
-        await axios.delete(`${API_URL}/crops/${cropId}`);
+        await axios.delete(`${effectiveApiUrl}/crops/${cropId}`);
         alert('✅ Crop deleted successfully!');
         fetchCrops();
       } catch (error) {
@@ -643,6 +661,16 @@ function CropsManager() {
               <div className="form-group">
                 <label>Area (Hectares)</label>
                 <input type="number" step="0.1" min="0.1" value={newCrop.area_hectares} onChange={(e) => setNewCrop({ ...newCrop, area_hectares: e.target.value })} placeholder="e.g., 5.5" required />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Latitude</label>
+                <input type="text" value={newCrop.latitude} onChange={(e) => setNewCrop({ ...newCrop, latitude: e.target.value })} placeholder="Auto-fills if empty" />
+              </div>
+              <div className="form-group">
+                <label>Longitude</label>
+                <input type="text" value={newCrop.longitude} onChange={(e) => setNewCrop({ ...newCrop, longitude: e.target.value })} placeholder="Auto-fills if empty" />
               </div>
             </div>
             <div className="form-row">

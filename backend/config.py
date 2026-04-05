@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 # Base directory
 BASE_DIR = Path(__file__).resolve().parent
 
-# Load .env file if it exists
-load_dotenv(BASE_DIR.parent / ".env")
+# Load .env file if it exists, use override=True to prioritize .env over system env vars
+load_dotenv(BASE_DIR.parent / ".env", override=True)
 
 # ── Database Configuration ──────────────────────────────────────────
 # Default to SQLite for easy setup, but allow override via env for PostgreSQL
@@ -31,8 +31,8 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral:latest")
 # Local config file for fallback
 CONFIG_FILE = BASE_DIR / "api_config.json"
 
-def _read_config_file() -> dict:
-    """Read api_config.json once."""
+def get_config_from_file() -> dict:
+    """Read api_config.json dynamically."""
     if CONFIG_FILE.exists():
         import json
         try:
@@ -42,10 +42,12 @@ def _read_config_file() -> dict:
             pass
     return {}
 
-_cfg = _read_config_file()
-
 def get_data_gov_api_key() -> str:
-    return DATA_GOV_API_KEY or _cfg.get("data_gov_api_key", "")
+    # Check env first, then re-read file to stay dynamic
+    val = os.getenv("DATA_GOV_API_KEY")
+    if val: return val
+    cfg = get_config_from_file()
+    return cfg.get("data_gov_api_key", "")
 
 def get_openweather_api_key() -> str:
     return OPENWEATHER_API_KEY or _cfg.get("openweather_api_key", "")
@@ -69,7 +71,7 @@ API_CONFIG = {
     "grok_vision_model": "grok-2-vision-1212",
     "groq_api_key": get_groq_api_key(),
     "groq_base_url": "https://api.groq.com/openai/v1",
-    "groq_vision_model": "meta-llama/llama-3.2-11b-vision-preview",
+    "groq_vision_model": "meta-llama/llama-4-scout-17b-16e-instruct",
     "ollama_base_url": OLLAMA_BASE_URL,
     "ollama_model": OLLAMA_MODEL
 }

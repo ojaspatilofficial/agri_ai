@@ -4,39 +4,43 @@ import exifr from 'exifr';
 import './ActionsLog.css';
 
 const ACTION_TYPES = [
-  { value: 'irrigation',     label: '🚿 Irrigation',              tokens: 10 },
-  { value: 'fertilization',  label: '🌱 Fertilization',           tokens: 15 },
-  { value: 'eco_action',     label: '🌍 Eco Action',              tokens: 20 },
-  { value: 'rotation',       label: '🔄 Crop Rotation',           tokens: 20 },
-  { value: 'composting',     label: '♻️ Composting',              tokens: 14 },
-  { value: 'rainwater',      label: '💧 Rainwater Harvesting',    tokens: 30 },
-  { value: 'solar',          label: '☀️ Solar Power',             tokens: 25 },
-  { value: 'organic',        label: '🍃 Organic Methods',         tokens: 18 },
-  { value: 'planting',       label: '🌾 Planting',                tokens: 5  },
-  { value: 'harvesting',     label: '🚜 Harvesting',              tokens: 5  },
+  { value: 'irrigation', label: '🚿 Irrigation', tokens: 10 },
+  { value: 'fertilization', label: '🌱 Fertilization', tokens: 15 },
+  { value: 'eco_action', label: '🌍 Eco Action', tokens: 20 },
+  { value: 'rotation', label: '🔄 Crop Rotation', tokens: 20 },
+  { value: 'composting', label: '♻️ Composting', tokens: 14 },
+  { value: 'rainwater', label: '💧 Rainwater Harvesting', tokens: 30 },
+  { value: 'solar', label: '☀️ Solar Power', tokens: 25 },
+  { value: 'organic', label: '🍃 Organic Methods', tokens: 18 },
+  { value: 'planting', label: '🌾 Planting', tokens: 5 },
+  { value: 'harvesting', label: '🚜 Harvesting', tokens: 5 },
 ];
 
 const LEVEL_CONFIG = {
-  L0_SUBMITTED:        { label: 'Submitted',         color: '#6b7280', icon: '📝' },
-  L1_IMAGE_UPLOADED:   { label: 'Image Uploaded',    color: '#f59e0b', icon: '🖼️' },
-  L2_GEO_VERIFIED:     { label: 'Geo Verified',      color: '#10b981', icon: '📍' },
-  L3_ADMIN_REVIEW:     { label: 'Admin Review',      color: '#3b82f6', icon: '🔍' },
-  L4_VIDEO_PENDING:    { label: 'Video Pending',      color: '#8b5cf6', icon: '📹' },
-  L4_VIDEO_VERIFIED:   { label: 'Video Verified',    color: '#059669', icon: '✅' },
-  L5_APPROVED:         { label: 'Approved ✓',        color: '#16a34a', icon: '🌟' },
-  L5_REJECTED:         { label: 'Rejected',           color: '#dc2626', icon: '❌' },
-  verification_failed: { label: 'Geo Failed',         color: '#ef4444', icon: '📍' },
+  L0_SUBMITTED: { label: 'Submitted', color: '#6b7280', icon: '📝' },
+  L1_IMAGE_UPLOADED: { label: 'Image Uploaded', color: '#f59e0b', icon: '🖼️' },
+  L2_GEO_VERIFIED: { label: 'Geo Verified', color: '#10b981', icon: '📍' },
+  L3_ADMIN_REVIEW: { label: 'Admin Review', color: '#3b82f6', icon: '🔍' },
+  L4_VIDEO_PENDING: { label: 'Video Pending', color: '#8b5cf6', icon: '📹' },
+  L4_VIDEO_VERIFIED: { label: 'Video Verified', color: '#059669', icon: '✅' },
+  L5_APPROVED: { label: 'Approved ✓', color: '#16a34a', icon: '🌟' },
+  L5_REJECTED: { label: 'Rejected', color: '#dc2626', icon: '❌' },
+  verification_failed: { label: 'Geo Failed', color: '#ef4444', icon: '📍' },
 };
 
 function getActionIcon(type) {
-  const icons = { irrigation:'🚿', fertilization:'🌱', pesticide:'🦠', harvesting:'🚜',
-    planting:'🌾', eco_action:'🌍', rotation:'🔄', composting:'♻️', rainwater:'💧', solar:'☀️', organic:'🍃' };
+  const icons = {
+    irrigation: '🚿', fertilization: '🌱', pesticide: '🦠', harvesting: '🚜',
+    planting: '🌾', eco_action: '🌍', rotation: '🔄', composting: '♻️', rainwater: '💧', solar: '☀️', organic: '🍃'
+  };
   return icons[type] || '📝';
 }
 function getActionColor(type) {
-  const colors = { irrigation:'#3b82f6', fertilization:'#10b981', pesticide:'#f59e0b',
-    harvesting:'#8b5cf6', planting:'#10b981', eco_action:'#059669', rotation:'#6366f1',
-    composting:'#059669', rainwater:'#3b82f6', solar:'#f59e0b', organic:'#10b981' };
+  const colors = {
+    irrigation: '#3b82f6', fertilization: '#10b981', pesticide: '#f59e0b',
+    harvesting: '#8b5cf6', planting: '#10b981', eco_action: '#059669', rotation: '#6366f1',
+    composting: '#059669', rainwater: '#3b82f6', solar: '#f59e0b', organic: '#10b981'
+  };
   return colors[type] || '#6b7280';
 }
 
@@ -105,10 +109,43 @@ function ActionsLog({ farmId, farmer }) {
   const [exifResult, setExifResult] = useState(null);  // from server after upload-parse
   const [geoResult, setGeoResult] = useState(null);    // from server after submit
   const [analyzing, setAnalyzing] = useState(false);
+  const [liveGps, setLiveGps] = useState(null); // { lat, lon } from browser
 
   const fileInputRef = useRef(null);
 
   useEffect(() => { fetchActions(); }, [resolvedFarmId]);
+
+  const handleUseLiveLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setLiveGps({ lat: latitude, lon: longitude });
+        // Update UI to show we have live GPS + Actual Browser Data for Time/Device
+        setExifResult(prev => ({
+          ...prev,
+          gps_latitude: latitude,
+          gps_longitude: longitude,
+          has_gps: true,
+          error: null,
+          is_live: true,
+          // Actual data fallbacks
+          datetime: prev?.datetime || new Date().toLocaleString(),
+          make: prev?.make || 'Web Upload',
+          model: prev?.model || `(via ${window.navigator.userAgent.match(/(Chrome|Safari|Firefox|Edg)/)?.[0] || 'Browser'})`
+        }));
+      },
+      (error) => {
+        console.error("Error getting location:", error);
+        alert(`Could not get location: ${error.message}. Please ensure location permissions are granted.`);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
 
   const fetchActions = async () => {
     try {
@@ -149,12 +186,14 @@ function ActionsLog({ farmId, farmer }) {
         : (rawDate ? String(rawDate) : null);
 
       const clientExif = {
-        gps_latitude:  gps?.latitude  ?? null,
+        gps_latitude: gps?.latitude ?? null,
         gps_longitude: gps?.longitude ?? null,
         has_gps: !!(gps?.latitude && gps?.longitude),
-        datetime: dateStr,
-        make:  tags?.Make  ? String(tags.Make)  : null,
-        model: tags?.Model ? String(tags.Model) : null,
+        // Actual Data Fallback: use current time if meta is missing
+        datetime: dateStr || new Date().toLocaleString(),
+        // Actual Data Fallback: identify browser as the upload source
+        make: tags?.Make ? String(tags.Make) : 'Web Upload',
+        model: tags?.Model ? String(tags.Model) : `(via ${window.navigator.userAgent.match(/(Chrome|Safari|Firefox|Edg)/)?.[0] || 'Browser'})`,
         error: (!gps?.latitude) ? 'No GPS data found in this image' : null,
       };
 
@@ -194,6 +233,10 @@ function ActionsLog({ farmId, farmer }) {
       formData.append('action_details', newAction.action_details);
       formData.append('green_tokens', String(newAction.green_tokens));
       if (imageFile) formData.append('image', imageFile);
+      if (liveGps) {
+        formData.append('provided_lat', String(liveGps.lat));
+        formData.append('provided_lon', String(liveGps.lon));
+      }
 
       const res = await axios.post(`${apiUrl}/actions_log/submit`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -209,6 +252,7 @@ function ActionsLog({ farmId, farmer }) {
       setNewAction({ action_type: '', action_details: '', green_tokens: 0 });
       setImageFile(null);
       setImagePreview(null);
+      setLiveGps(null); // Clear live state
       fetchActions();
     } catch (err) {
       console.error('Error submitting action:', err);
@@ -272,7 +316,7 @@ function ActionsLog({ farmId, farmer }) {
         <div className="tokens-card">
           <div className="tokens-icon">⏳</div>
           <div className="tokens-info">
-            <h3>{actions.filter(a => ['pending','awaiting_admin_review','awaiting_video_verification'].includes(a.token_request_status)).length}</h3>
+            <h3>{actions.filter(a => ['pending', 'awaiting_admin_review', 'awaiting_video_verification'].includes(a.token_request_status)).length}</h3>
             <p>Pending Review</p>
           </div>
         </div>
@@ -371,6 +415,36 @@ function ActionsLog({ farmId, farmer }) {
                   </div>
                 </div>
                 <GpsBadge exifResult={exifResult} geoResult={geoResult} />
+
+                {!exifResult.has_gps && (
+                  <button 
+                    type="button" 
+                    className="btn-live-gps"
+                    onClick={handleUseLiveLocation}
+                    style={{
+                      marginTop: '1rem',
+                      padding: '0.6rem 1rem',
+                      background: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.6rem',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
+                      fontWeight: '600',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      width: '100%',
+                      justifyContent: 'center',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => e.target.style.background = '#2563eb'}
+                    onMouseLeave={(e) => e.target.style.background = '#3b82f6'}
+                  >
+                    📍 Use My Actual Current Location
+                  </button>
+                )}
               </div>
             )}
 
