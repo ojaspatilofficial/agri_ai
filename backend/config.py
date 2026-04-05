@@ -4,6 +4,7 @@ Smart Farming AI — Configuration Module
 Unified configuration management for APIs, Database, and LLMs.
 Supports both environment variables and a local config.json file.
 """
+
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -31,10 +32,12 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral:latest")
 # Local config file for fallback
 CONFIG_FILE = BASE_DIR / "api_config.json"
 
+
 def get_config_from_file() -> dict:
     """Read api_config.json dynamically."""
     if CONFIG_FILE.exists():
         import json
+
         try:
             with open(CONFIG_FILE, "r") as f:
                 return json.load(f)
@@ -42,21 +45,30 @@ def get_config_from_file() -> dict:
             pass
     return {}
 
+
 def get_data_gov_api_key() -> str:
     # Check env first, then re-read file to stay dynamic
     val = os.getenv("DATA_GOV_API_KEY")
-    if val: return val
+    if val:
+        return val
     cfg = get_config_from_file()
     return cfg.get("data_gov_api_key", "")
 
+
 def get_openweather_api_key() -> str:
-    return OPENWEATHER_API_KEY or _cfg.get("openweather_api_key", "")
+    cfg = get_config_from_file()
+    return OPENWEATHER_API_KEY or cfg.get("openweather_api_key", "")
+
 
 def get_grok_api_key() -> str:
-    return GROK_API_KEY or _cfg.get("grok_api_key", "")
+    cfg = get_config_from_file()
+    return GROK_API_KEY or cfg.get("grok_api_key", "")
+
 
 def get_groq_api_key() -> str:
-    return GROQ_API_KEY or _cfg.get("groq_api_key", "")
+    cfg = get_config_from_file()
+    return GROQ_API_KEY or cfg.get("groq_api_key", "")
+
 
 # ── Unified Configuration Dict ─────────────────────────────────────
 API_CONFIG = {
@@ -73,5 +85,5 @@ API_CONFIG = {
     "groq_base_url": "https://api.groq.com/openai/v1",
     "groq_vision_model": "meta-llama/llama-4-scout-17b-16e-instruct",
     "ollama_base_url": OLLAMA_BASE_URL,
-    "ollama_model": OLLAMA_MODEL
+    "ollama_model": OLLAMA_MODEL,
 }

@@ -47,7 +47,7 @@ function Dashboard({ farmId, apiUrl, onNavigate }) {
   const handleRunAgents = async () => {
     setIsRunningAgents(true);
     try {
-      await axios.post(`${apiUrl}/run_agents?farm_id=${encodeURIComponent(farmId)}`);
+      await axios.post(`${apiUrl}/api/agent/run`, { farm_id: farmId, query: "Full farm analysis", location: "Pune", crop_type: "wheat" });
       await fetchDashboardData();
     } catch (e) { alert(`❌ Error running agents: ${e.message}`); }
     finally { setIsRunningAgents(false); }

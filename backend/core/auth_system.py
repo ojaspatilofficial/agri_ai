@@ -4,45 +4,60 @@ from datetime import datetime, timedelta, date
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import mapped_column, Mapped
-from sqlalchemy import String, Boolean, DateTime, Float, Integer, Date, select, update, Text
+from sqlalchemy import (
+    String,
+    Boolean,
+    DateTime,
+    Float,
+    Integer,
+    Date,
+    select,
+    update,
+    Text,
+)
 from .database import Base, AsyncDatabase
 from config import DATABASE_URL
 
 # ── Farmer Model ──────────────────────────────────────────────────
 
+
 class Farmer(Base):
     __tablename__ = "farmers"
-    
+
     id: Mapped[int] = mapped_column(primary_key=True)
     farmer_id: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(200))
     email: Mapped[str] = mapped_column(String(200), unique=True, index=True)
     phone: Mapped[str] = mapped_column(String(20))
     password_hash: Mapped[str] = mapped_column(Text)
-    
+
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
     # Metadata
-    location: Mapped[str] = mapped_column(Text, nullable=True) 
+    location: Mapped[str] = mapped_column(Text, nullable=True)
     latitude: Mapped[float] = mapped_column(Float, nullable=True)
     longitude: Mapped[float] = mapped_column(Float, nullable=True)
-    farm_size: Mapped[float] = mapped_column(Float, nullable=True) # In hectares
+    farm_size: Mapped[float] = mapped_column(Float, nullable=True)  # In hectares
     language: Mapped[str] = mapped_column(String(10), default="en")
-    
+
     sowed_land_area_acres: Mapped[float] = mapped_column(Float, nullable=True)
     total_land_area_acres: Mapped[float] = mapped_column(Float, nullable=True)
     number_of_crops: Mapped[int] = mapped_column(Integer, nullable=True)
     crops_names: Mapped[str] = mapped_column(Text, nullable=True)
     sowing_date: Mapped[date] = mapped_column(Date, nullable=True)
-    
+
     # Enhanced AI Context Fields
     soil_type: Mapped[str] = mapped_column(String(100), nullable=True)
     irrigation_source: Mapped[str] = mapped_column(String(100), nullable=True)
     is_organic: Mapped[bool] = mapped_column(Boolean, default=False)
 
+
 # ── Auth System Class ───────────────────────────────────────────
+
 
 class AuthSystem:
     def __init__(self, db: AsyncDatabase):
@@ -56,13 +71,17 @@ class AuthSystem:
             result = await session.execute(stmt)
             if result.scalars().first():
                 raise Exception("Email already registered")
-                
+
+            import hashlib
+            hashed_pw = hashlib.sha256(farmer_data["password"].encode()).hexdigest()
+
             new_farmer = Farmer(
-                farmer_id=farmer_data.get("farmer_id") or f"F_{int(datetime.utcnow().timestamp())}",
+                farmer_id=farmer_data.get("farmer_id")
+                or f"F_{int(datetime.utcnow().timestamp())}",
                 name=farmer_data["name"],
                 email=farmer_data["email"],
                 phone=farmer_data["phone"],
-                password_hash=farmer_data["password"], 
+                password_hash=hashed_pw,
                 location=farmer_data.get("location"),
                 latitude=farmer_data.get("latitude"),
                 longitude=farmer_data.get("longitude"),
@@ -70,36 +89,46 @@ class AuthSystem:
                 language=farmer_data.get("language", "en"),
                 soil_type=farmer_data.get("soil_type"),
                 irrigation_source=farmer_data.get("irrigation_source"),
-                is_organic=farmer_data.get("is_organic", False)
+                is_organic=farmer_data.get("is_organic", False),
             )
             session.add(new_farmer)
             await session.commit()
             return {
                 "status": "success",
                 "farmer_id": new_farmer.farmer_id,
-                "name": new_farmer.name
+                "name": new_farmer.name,
             }
 
     async def login_farmer(self, identifier: str, password: str) -> Dict[str, Any]:
         """Verify login credentials (email or farmer_id)"""
+        import hashlib
+
         async with self.db.session_factory() as session:
             # Check by email or farmer_id (case-insensitive)
             from sqlalchemy import or_, func
-            stmt = select(Farmer).where(or_(
-                func.lower(Farmer.email) == identifier.lower(),
-                func.lower(Farmer.farmer_id) == identifier.lower()
-            ))
+
+            stmt = select(Farmer).where(
+                or_(
+                    func.lower(Farmer.email) == identifier.lower(),
+                    func.lower(Farmer.farmer_id) == identifier.lower(),
+                )
+            )
             result = await session.execute(stmt)
             farmer = result.scalars().first()
-            
-            if not farmer or farmer.password_hash != password:
+
+            if not farmer:
                 return {"status": "failed", "message": "Invalid email/ID or password"}
-                
+
+            # Hash the input password and compare
+            password_hash = hashlib.sha256(password.encode()).hexdigest()
+            if farmer.password_hash != password_hash:
+                return {"status": "failed", "message": "Invalid email/ID or password"}
+
             return {
                 "status": "success",
                 "farmer_id": farmer.farmer_id,
                 "name": farmer.name,
-                "email": farmer.email
+                "email": farmer.email,
             }
 
     async def get_farmer_profile(self, farmer_id: str) -> Optional[Dict[str, Any]]:
@@ -122,14 +151,18 @@ class AuthSystem:
                 "total_land_area_acres": farmer.total_land_area_acres,
                 "number_of_crops": farmer.number_of_crops,
                 "crops_names": farmer.crops_names,
-                "sowing_date": farmer.sowing_date.isoformat() if farmer.sowing_date else None,
+                "sowing_date": farmer.sowing_date.isoformat()
+                if farmer.sowing_date
+                else None,
                 "sowed_land_area_acres": farmer.sowed_land_area_acres,
                 "soil_type": farmer.soil_type,
                 "irrigation_source": farmer.irrigation_source,
-                "is_organic": farmer.is_organic
+                "is_organic": farmer.is_organic,
             }
 
-    async def update_farm_details(self, farmer_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def update_farm_details(
+        self, farmer_id: str, data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         """Update farm details"""
         async with self.db.session_factory() as session:
             stmt = select(Farmer).where(Farmer.farmer_id == farmer_id)
@@ -137,7 +170,7 @@ class AuthSystem:
             farmer = result.scalars().first()
             if not farmer:
                 return None
-            
+
             if data.get("total_land_area_acres") is not None:
                 farmer.total_land_area_acres = data["total_land_area_acres"]
             if data.get("number_of_crops") is not None:
@@ -146,24 +179,30 @@ class AuthSystem:
                 farmer.crops_names = data["crops_names"]
             if data.get("sowing_date") is not None:
                 try:
-                    farmer.sowing_date = datetime.strptime(data["sowing_date"], "%Y-%m-%d").date()
+                    farmer.sowing_date = datetime.strptime(
+                        data["sowing_date"], "%Y-%m-%d"
+                    ).date()
                 except:
                     pass
             if data.get("sowed_land_area_acres") is not None:
                 farmer.sowed_land_area_acres = data["sowed_land_area_acres"]
-            
+
             await session.commit()
-            
+
             return {
                 "farmer_id": farmer.farmer_id,
                 "total_land_area_acres": farmer.total_land_area_acres,
                 "number_of_crops": farmer.number_of_crops,
                 "crops_names": farmer.crops_names,
-                "sowing_date": farmer.sowing_date.isoformat() if farmer.sowing_date else None,
-                "sowed_land_area_acres": farmer.sowed_land_area_acres
+                "sowing_date": farmer.sowing_date.isoformat()
+                if farmer.sowing_date
+                else None,
+                "sowed_land_area_acres": farmer.sowed_land_area_acres,
             }
 
-    async def update_basic_profile(self, farmer_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def update_basic_profile(
+        self, farmer_id: str, data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         """Update basic profile - name, phone, email"""
         async with self.db.session_factory() as session:
             stmt = select(Farmer).where(Farmer.farmer_id == farmer_id)
@@ -171,7 +210,7 @@ class AuthSystem:
             farmer = result.scalars().first()
             if not farmer:
                 return None
-            
+
             if data.get("name") is not None:
                 farmer.name = data["name"]
             if data.get("phone") is not None:
@@ -190,9 +229,9 @@ class AuthSystem:
                 farmer.latitude = data["latitude"]
             if data.get("longitude") is not None:
                 farmer.longitude = data["longitude"]
-            
+
             await session.commit()
-            
+
             return {
                 "farmer_id": farmer.farmer_id,
                 "name": farmer.name,
@@ -203,5 +242,5 @@ class AuthSystem:
                 "irrigation_source": farmer.irrigation_source,
                 "is_organic": farmer.is_organic,
                 "latitude": farmer.latitude,
-                "longitude": farmer.longitude
+                "longitude": farmer.longitude,
             }

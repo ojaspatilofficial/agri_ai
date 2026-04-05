@@ -267,7 +267,7 @@ class AsyncDatabase:
                 farm_id=crop_data.get("farm_id"),
                 crop_type=crop_data.get("crop_type"),
                 variety=crop_data.get("variety"),
-                planted_date=datetime.fromisoformat(crop_data["planted_date"]) if "planted_date" in crop_data else datetime.utcnow(),
+                planted_date=datetime.fromisoformat(crop_data["planted_date"]) if crop_data.get("planted_date") else datetime.utcnow(),
                 area_hectares=float(crop_data.get("area_hectares", 1.0)),
                 status=crop_data.get("status", "growing"),
                 latitude=crop_data.get("latitude"),

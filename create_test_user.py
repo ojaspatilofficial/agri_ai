@@ -27,6 +27,7 @@ async def create_test_user():
     
     # Create test user data
     user_data = {
+        "farmer_id": "FARM001",
         "name": "Ravi Kumar",
         "email": "ravi@example.com",
         "phone": "+919876543210",
@@ -37,7 +38,7 @@ async def create_test_user():
         "farm_size": 12.5,
         "language": "en"
     }
-    
+
     print(f"\n📝 Registering user: {user_data['email']}...")
     try:
         result = await auth.register_farmer(user_data)

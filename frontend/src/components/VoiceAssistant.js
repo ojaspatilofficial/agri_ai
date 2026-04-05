@@ -33,7 +33,7 @@ function VoiceAssistant({ apiUrl, farmer }) {
         farm_id: getFarmId(),
       });
       
-      const responseText = res.data.voice_summary || res.data.response_text;
+      const responseText = res.data.reply || res.data.voice_summary || res.data.response_text;
       const llmUsed = res.data.llm_used || false;
       setResponse({ text: responseText, llmUsed });
       setShowModal(true);

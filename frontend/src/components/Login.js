@@ -187,13 +187,69 @@ function Login({ onLogin, onAdminClick }) {
       switchToLogin: 'पहले से खाता है? लॉगिन करें',
       or: 'या',
       features: {
-        title: 'AI-संचालित सुविधाएं',
+        title: 'AI-Powered Smart Farming',
         items: [
-          '🌾 स्मार्ट खेती के लिए 17 AI एजेंट',
+          '🤖 10 Autonomous AI Agents',
+          '🌡️ Real-time Weather & Soil Monitoring',
+          '💰 Market Price Predictions',
+          '🌱 Disease Detection & Prevention',
+          '💧 Smart Irrigation Control',
+          '🎤 Voice Assistant (Marathi/Hindi/English)'
+        ]
+      }
+    },
+    mr: {
+      title: 'स्मार्ट फार्मिंग AI',
+      subtitle: mode === 'login' ? 'तुमच्या फार्म डॅशबोर्डमध्ये लॉगिन करा' : 'नवीन खाते तयार करा',
+      farmerId: 'शेतकरी ID',
+      password: 'पासवर्ड',
+      confirmPassword: 'पासवर्डची पुष्टी करा',
+      name: 'पूर्ण नाव',
+      email: 'ईमेल (पर्यायी)',
+      phone: 'फोन नंबर (पर्यायी)',
+      language: 'पसंतीची भाषा',
+      loginButton: 'डॅशबोर्डमध्ये लॉगिन करा',
+      registerButton: 'खाते तयार करा',
+      demoButton: 'डेमो वापरा',
+      switchToRegister: 'खाते नाही? नोंदणी करा',
+      switchToLogin: 'आधीपासून खाते आहे? लॉगिन करा',
+      or: 'किंवा',
+      features: {
+        title: 'AI-Powered Smart Farming',
+        items: [
+          '🤖 10 Autonomous AI Agents',
+          '🌡️ Real-time Weather & Soil Monitoring',
+          '💰 Market Price Predictions',
+          '🌱 Disease Detection & Prevention',
+          '💧 Smart Irrigation Control',
+          '🎤 Voice Assistant (Marathi/Hindi/English)'
+        ]
+      }
+    },
+    hi: {
+      title: 'स्मार्ट फार्मिंग AI',
+      subtitle: mode === 'login' ? 'अपने फार्म डैशबोर्ड में लॉगिन करें' : 'नया खाता बनाएं',
+      farmerId: 'किसान ID',
+      password: 'पासवर्ड',
+      confirmPassword: 'पासवर्ड की पुष्टि करें',
+      name: 'पूरा नाम',
+      email: 'ईमेल (वैकल्पिक)',
+      phone: 'फ़ोन नंबर (वैकल्पिक)',
+      language: 'पसंदीदा भाषा',
+      loginButton: 'डैशबोर्ड में लॉगिन करें',
+      registerButton: 'खाता बनाएं',
+      demoButton: 'डेमो आज़माएं',
+      switchToRegister: 'खाता नहीं है? रजिस्टर करें',
+      switchToLogin: 'पहले से खाता है? लॉगिन करें',
+      or: 'या',
+      features: {
+        title: 'AI-संचालित स्मार्ट खेती',
+        items: [
+          '🤖 10 स्वायत्र AI एजेंट',
           '🌡️ वास्तविक समय मौसम और मिट्टी निगरानी',
           '💰 बाजार मूल्य भविष्यवाणी',
           '🌱 रोग का पता लगाना और रोकथाम',
-          '⛓️ ब्लॉकचेन ग्रीन टोकन पुरस्कार',
+          '💧 स्मार्ट सिंचाई नियंत्रण',
           '🎤 वॉयस असिस्टेंट (मराठी/हिंदी/अंग्रेजी)'
         ]
       }
@@ -215,13 +271,13 @@ function Login({ onLogin, onAdminClick }) {
       switchToLogin: 'आधीपासून खाते आहे? लॉगिन करा',
       or: 'किंवा',
       features: {
-        title: 'AI-संचालित वैशिष्ट्ये',
+        title: 'AI-संचालित स्मार्ट शेती',
         items: [
-          '🌾 स्मार्ट शेतीसाठी 17 AI एजंट',
+          '🤖 10 स्वायत्त AI एजंट',
           '🌡️ रिअल-टाइम हवामान आणि माती निरीक्षण',
           '💰 बाजार किंमत अंदाज',
           '🌱 रोग शोध आणि प्रतिबंध',
-          '⛓️ ब्लॉकचेन ग्रीन टोकन बक्षिसे',
+          '💧 स्मार्ट सिंचाई नियंत्रण',
           '🎤 व्हॉइस असिस्टंट (मराठी/हिंदी/इंग्रजी)'
         ]
       }
@@ -384,16 +440,38 @@ function Login({ onLogin, onAdminClick }) {
         )}
       </div>
 
-      <div className="login-right">
-        <div className="features-section">
-          <h2>{t.features.title}</h2>
-          <ul className="features-list">
-            {t.features.items.map((feature, index) => (
-              <li key={index} className="feature-item">
-                {feature}
-              </li>
-            ))}
-          </ul>
+      <div className="login-right" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ 
+          width: '100%', 
+          height: '100%', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          background: 'url(https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1920&h=1080&fit=crop) center/cover no-repeat'
+        }}>
+          <div style={{
+            background: 'rgba(0,0,0,0.3)',
+            padding: '40px',
+            borderRadius: '20px',
+            backdropFilter: 'blur(5px)'
+          }}>
+            <h1 style={{ 
+              fontSize: '48px', 
+              fontWeight: '800',
+              color: 'white',
+              textShadow: '0 4px 20px rgba(0,0,0,0.5)',
+              margin: 0
+            }}>
+              AgroBrain OS
+            </h1>
+            <p style={{ 
+              fontSize: '20px', 
+              color: 'rgba(255,255,255,0.9)',
+              marginTop: '10px'
+            }}>
+              AI-Powered Smart Farming
+            </p>
+          </div>
         </div>
       </div>
     </div>
