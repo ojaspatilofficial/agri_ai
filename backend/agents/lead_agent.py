@@ -12,8 +12,9 @@ from agents.llm_orchestrator import LLMOrchestrator
 from config import API_CONFIG
 
 class LeadAgent:
-    def __init__(self, database):
+    def __init__(self, database, auth_system=None):
         self.db = database
+        self.auth_system = auth_system
         self.name = "Lead Orchestrator"
         self.agent_priority = {
             'critical': ['water_management', 'disease_detection', 'climate_risk'],
@@ -131,8 +132,8 @@ class LeadAgent:
             )
             
             results["unified_advice"] = unified_advice
-            if unified_advice.get("source") == "llm":
-                results["global_recommendations"].insert(0, f"🤖 AI Insights: {unified_advice['advice'][:200]}...")
+            if unified_advice.get("source") in ["llm", "groq", "ollama"]:
+                results["global_recommendations"].insert(0, f"🤖 AI Insights:\n\n{unified_advice['advice']}")
 
             # Store recommendations
             for rec in global_recs:
@@ -170,12 +171,26 @@ class LeadAgent:
 
     def _generate_global_recommendations(self, agent_results: Dict) -> List[str]:
         recommendations = []
+        
+        # Water / Irrigation Detailed Recommendation
         water = agent_results.get("water", {})
         if water.get("should_irrigate"):
-            recommendations.append(f"💧 Irrigate for {water.get('duration_minutes', 30)} minutes")
+            duration = water.get('duration_minutes', 30)
+            recommendations.append(f"💧 Action Required: Irrigate for {duration} minutes to safely restore optimal soil moisture levels, taking into account current weather forecasts.")
+            
+        # Disease Detailed Recommendation
         disease = agent_results.get("disease", {})
-        if disease.get("disease_detected"):
-            recommendations.append(f"⚠️ Disease detected: {disease.get('disease_name')} - Take action")
+        is_diseased = disease.get("disease_detected", False) or (disease.get("disease_key") and disease.get("disease_key") != "healthy")
+        if is_diseased:
+            name = disease.get('disease_name') or disease.get('display_name') or disease.get('disease_key', 'Unknown pathgen')
+            reason = disease.get('reasoning', 'Take immediate protective action to prevent further spread.')
+            recommendations.append(f"⚠️ Critical Alert: Disease detected ({name}). {reason}")
+            
+        # Fertilizer Detailed Recommendation
+        fertilizer = agent_results.get("fertilizer", {})
+        if fertilizer.get("recommendation_text"):
+            recommendations.append(f"🌱 Fertilizer Recommendation: {fertilizer.get('recommendation_text')}")
+            
         return recommendations
 
     def _determine_priority_actions(self, agent_results: Dict) -> List[Dict]:

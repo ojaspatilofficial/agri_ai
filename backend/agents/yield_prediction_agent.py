@@ -118,26 +118,39 @@ class YieldPredictionAgent:
         return result
     
     def _estimate_market_value(self, crop_type: str, yield_tons: float) -> Dict[str, Any]:
-        """Estimate market value of yield"""
+        """Estimate market value of yield (in INR per Quintal)"""
         
-        # Average prices (INR per ton)
-        prices = {
-            "wheat": 20000,
-            "rice": 22000,
-            "corn": 18000,
-            "cotton": 50000,
-            "sugarcane": 3000
+        # Average prices (INR per Quintal) - Standard Indian Market Unit
+        # 1 Ton = 10 Quintals
+        prices_per_quintal = {
+            "wheat": 2200,     # Reduced from ton logic (22000/10)
+            "rice": 2400,
+            "corn": 1900,
+            "cotton": 5200,
+            "sugarcane": 350,  # ~350 per quintal
+            "mustard": 4500,
+            "soybean": 4800,
+            "chickpeas": 5000,
+            "potato": 1500,
+            "onion": 1800,
+            "tomato": 2000
         }
         
-        base_price = prices.get(crop_type, 15000)
-        price_variation = random.uniform(0.9, 1.1)
-        estimated_price = base_price * price_variation
+        # Make crop_type robust matching
+        crop_clean = crop_type.lower().strip()
+        base_price = prices_per_quintal.get(crop_clean, 2000)
         
-        total_value = yield_tons * estimated_price
+        price_variation = random.uniform(0.9, 1.1)
+        estimated_price_per_quintal = base_price * price_variation
+        
+        # Convert total yield in tons to quintals
+        yield_quintals = yield_tons * 10
+        total_value = yield_quintals * estimated_price_per_quintal
         
         return {
-            "estimated_price_per_ton": round(estimated_price, 2),
+            "estimated_price_per_quintal": round(estimated_price_per_quintal, 2),
             "total_estimated_value": round(total_value, 2),
             "currency": "INR",
-            "note": "Price subject to market conditions"
+            "market_unit": "Quintal",
+            "note": "Price subject to local mandi conditions"
         }

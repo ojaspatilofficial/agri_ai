@@ -96,7 +96,7 @@ class LLMOrchestrator:
                     farm_id=farm_id,
                     prompt_sent=prompt,
                     response_received=result.get("advice", ""),
-                    model_used=result.get("model", self.model),
+                    model_used=result.get("model", self.groq_model if self._groq_available else self.ollama_model),
                     context_used={
                         "shared_context": shared_context,
                         "rich_context_keys": list(rich_context.keys()) if rich_context else [],

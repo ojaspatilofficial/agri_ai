@@ -2,7 +2,7 @@
 📍 LIVE MANDI PRICE AGENT
 Provides real-time nearby mandi (market) prices and insights.
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import random
 from datetime import datetime
 import math
@@ -43,34 +43,119 @@ class LiveMandiAgent:
         """Simulate price percentage change compared to yesterday."""
         return round(random.uniform(-5.0, 5.0), 2)
 
+    def get_full_market_data(self, state: Optional[str] = None) -> Dict[str, Any]:
+        """Fetch all records from the mandi API for the marketplace view."""
+        import requests
+        from config import get_data_gov_api_key
+        
+        api_key = get_data_gov_api_key()
+        # Resource: Current Daily Price of Various Commodities
+        resource_id = "9ef84268-d588-465a-a308-a864a43d0070"
+        
+        # Base URL with a high limit to cover all current Indian records (avg 4k-6k)
+        url = f"https://api.data.gov.in/resource/{resource_id}?api-key={api_key}&format=json&limit=5000"
+        
+        if state:
+            url += f"&filters[state]={state}"
+            
+        try:
+            print(f"[LiveMandi] Fetching real-time market data (State: {state or 'Global'})...")
+            response = requests.get(url, timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                count = len(data.get('records', []))
+                print(f"[LiveMandi] ✅ Successfully fetched {count} records.")
+                return data
+            else:
+                print(f"[LiveMandi] ❌ API Error: Status {response.status_code}")
+                return {"status": "error", "message": f"Source API returned {response.status_code}", "records": []}
+        except Exception as e:
+            print(f"[LiveMandi] ❌ API Exception: {str(e)}")
+            return {"status": "error", "message": f"Source API Exception: {str(e)}", "records": []}
+
     def get_mandi_prices(self, crop: str, lat: float = None, lon: float = None) -> Dict[str, Any]:
         """
         Fetch real-time prices for a specific crop across nearby mandis.
-        In a real-world scenario, this would call eNAM or data.gov.in API.
+        Calls the real data.gov.in API with the configured key.
         """
+        import requests
+        from config import get_data_gov_api_key
+        
+        api_key = get_data_gov_api_key()
+        resource_id = "9ef84268-d588-465a-a308-a864a43d0070"
+        
+        # Try real API first
+        if api_key:
+            try:
+                # We fetch a larger set and filter locally for simplicity in this version
+                url = f"https://api.data.gov.in/resource/{resource_id}?api-key={api_key}&format=json&limit=1000"
+                response = requests.get(url, timeout=10)
+                if response.status_code == 200:
+                    full_data = response.json()
+                    records = full_data.get("records", [])
+                    
+                    # Filter by crop (commodity)
+                    crop_lower = crop.lower()
+                    crop_records = [r for r in records if crop_lower in r.get("commodity", "").lower()]
+                    
+                    if crop_records:
+                        results = []
+                        # Take up to 5 diverse records
+                        for idx, r in enumerate(crop_records[:5]):
+                            mandi_name = r.get("market", "Mandi")
+                            try:
+                                modal_price = int(float(r.get("modal_price") or r.get("max_price") or 0))
+                            except:
+                                modal_price = 0
+                            
+                            if modal_price == 0: continue
+                                
+                            results.append({
+                                "mandi_id": f"real_{idx}",
+                                "mandi_name": f"{mandi_name} ({r.get('state', 'N/A')})",
+                                "distance_km": round(random.uniform(5, 100), 1),
+                                "price_per_quintal": modal_price,
+                                "currency": "INR",
+                                "trend": self._calculate_trend(),
+                                "price_change_pct": self._calculate_price_change(),
+                                "last_updated": r.get("arrival_date", datetime.now().strftime("%Y-%m-%d"))
+                            })
+                        
+                        if results:
+                            # Heuristics
+                            for r in results:
+                                r["est_transport_cost_per_q"] = round(r["distance_km"] * 15, 2)
+                                r["net_profit_per_q"] = r["price_per_quintal"] - r["est_transport_cost_per_q"]
+                            
+                            results = sorted(results, key=lambda x: x["net_profit_per_q"], reverse=True)
+                            
+                            return {
+                                "agent": self.name,
+                                "crop": crop,
+                                "timestamp": datetime.now().isoformat(),
+                                "best_price_mandi": results[0]["mandi_name"],
+                                "best_net_profit_mandi": results[0]["mandi_name"],
+                                "mandis": results,
+                                "insight": f"Live data for {crop} from data.gov.in. Selling at {results[0]['mandi_name']} is currently most profitable.",
+                                "source": "data.gov.in (Real API)"
+                            }
+            except Exception as e:
+                print(f"[LiveMandi] specific search error, falling back to simulated: {e}")
+
+        # Fallback to simulated data if API fails or no crop found
         crop_lower = crop.lower()
-        base_price = self.base_prices.get(crop_lower, 2000)  # Default metric if crop not found
+        base_price = self.base_prices.get(crop_lower, 2000)
         
         results = []
         for mandi in self.mandi_db:
-            # Vary the distance slightly to simulate actual user location differences
-            # If lat/lon are not provided, we just give randomized distances based on defaults
             distance_variance = random.uniform(0.8, 1.2)
             distance = round(mandi["base_distance"] * distance_variance, 1)
-            
-            # Premium logic: Closer, more demand mandis might offer slightly better or worse prices
             daily_fluctuation = random.uniform(0.95, 1.05)
             current_price = int(base_price * mandi["premium"] * daily_fluctuation)
             
             trend = self._calculate_trend()
             price_change = self._calculate_price_change()
-            if trend == "up":
-                price_change = abs(price_change)
-            elif trend == "down":
-                price_change = -abs(price_change)
-            else:
-                price_change = 0.0
-                
+            
             results.append({
                 "mandi_id": mandi["id"],
                 "mandi_name": mandi["name"],
@@ -82,27 +167,19 @@ class LiveMandiAgent:
                 "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
             
-        # Sort by best price (highest first)
-        results = sorted(results, key=lambda x: x["price_per_quintal"], reverse=True)
-        
-        # Calculate best recommendation
-        best_mandi = results[0]
-        
-        # Very simple transport cost heuristic: ₹15 per km per quintal avg rough estimate
+        # Heuristics
         for r in results:
             r["est_transport_cost_per_q"] = round(r["distance_km"] * 15, 2)
             r["net_profit_per_q"] = r["price_per_quintal"] - r["est_transport_cost_per_q"]
             
-        # Re-sort by best net profit
         results = sorted(results, key=lambda x: x["net_profit_per_q"], reverse=True)
-        best_net_mandi = results[0]
-
         return {
             "agent": self.name,
             "crop": crop,
             "timestamp": datetime.now().isoformat(),
-            "best_price_mandi": best_mandi["mandi_name"],
-            "best_net_profit_mandi": best_net_mandi["mandi_name"],
+            "best_price_mandi": results[0]["mandi_name"],
+            "best_net_profit_mandi": results[0]["mandi_name"],
             "mandis": results,
-            "insight": f"Selling at {best_net_mandi['mandi_name']} yields the highest net profit after transport costs."
+            "insight": f"Selling at {results[0]['mandi_name']} yields the highest net profit after transport costs.",
+            "source": "Simulation (Fallback)"
         }
