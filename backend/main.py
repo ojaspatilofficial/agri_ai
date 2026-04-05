@@ -25,6 +25,7 @@ import json
 import io
 import os
 import base64
+import logging
 import random
 from datetime import datetime
 from dotenv import load_dotenv
@@ -32,6 +33,8 @@ from dotenv import load_dotenv
 # Load environment variables from both .env files
 load_dotenv()
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+
+logger = logging.getLogger(__name__)
 
 # Import configuration
 from config import API_CONFIG
@@ -1221,6 +1224,10 @@ async def submit_action_log(
             "filename": image.filename,
             "content_type": image.content_type,
         }
+        logger.info(
+            "[ACTION_LOG] Image received: filename=%r, content_type=%r, size=%d bytes",
+            image.filename, image.content_type, len(image_bytes),
+        )
 
         # Look up farm GPS profile
         farm_profile = await db.get_farm_profile(farm_id)
@@ -1289,6 +1296,18 @@ async def submit_action_log(
         )
         image_metadata["has_gps"] = geo_result["exif"].get("has_gps", False) or (
             provided_lat is not None
+        )
+        logger.info(
+            "[ACTION_LOG] Image metadata extracted: exif_datetime=%r, exif_device=%r, has_gps=%s",
+            image_metadata["exif_datetime"],
+            image_metadata["exif_device"],
+            image_metadata["has_gps"],
+        )
+        logger.info(
+            "[ACTION_LOG] Geo-verification result: passed=%s, level=%r, reason=%r",
+            geo_result["passed"],
+            geo_result.get("verification_level"),
+            verification_reason,
         )
 
         if geo_result["passed"]:

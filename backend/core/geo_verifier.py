@@ -9,9 +9,12 @@ Public API:
     verify_geo(image_bytes, farm_lat, farm_lon, allowed_radius_m) -> dict
 """
 
+import logging
 import math
 import io
 from typing import Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 # ── EXIF helpers ────────────────────────────────────────────────────────────
 
@@ -87,6 +90,8 @@ def extract_exif(image_bytes: bytes) -> Dict[str, Any]:
         "error": None,
     }
 
+    logger.info("[EXIF] Starting EXIF extraction from image (%d bytes)", len(image_bytes))
+
     try:
         from PIL import Image
         from PIL.ExifTags import TAGS, GPSTAGS
@@ -95,6 +100,7 @@ def extract_exif(image_bytes: bytes) -> Dict[str, Any]:
         raw_exif = img._getexif()
         if not raw_exif:
             result["error"] = "No EXIF data found in image"
+            logger.warning("[EXIF] No EXIF data found in image")
             return result
 
         # Decode all EXIF tags
@@ -108,6 +114,9 @@ def extract_exif(image_bytes: bytes) -> Dict[str, Any]:
         result["model"] = str(exif_decoded.get("Model", "")).strip() or None
         result["datetime"] = str(exif_decoded.get("DateTimeOriginal", exif_decoded.get("DateTime", ""))).strip() or None
 
+        logger.info("[EXIF] Device: make=%r, model=%r", result["make"], result["model"])
+        logger.info("[EXIF] Datetime: %r", result["datetime"])
+
         # GPS parsing
         gps_info_raw = exif_decoded.get("GPSInfo")
         if gps_info_raw:
@@ -117,6 +126,7 @@ def extract_exif(image_bytes: bytes) -> Dict[str, Any]:
                 gps_info[sub_tag] = val
 
             result["raw_tags"] = {k: str(v) for k, v in gps_info.items()}
+            logger.info("[EXIF] Raw GPS tags found: %s", list(result["raw_tags"].keys()))
 
             lat_dms = gps_info.get("GPSLatitude")
             lat_ref = gps_info.get("GPSLatitudeRef", "N")
@@ -130,18 +140,25 @@ def extract_exif(image_bytes: bytes) -> Dict[str, Any]:
                     result["gps_latitude"] = round(lat, 7)
                     result["gps_longitude"] = round(lon, 7)
                     result["has_gps"] = True
+                    logger.info("[EXIF] GPS coordinates extracted successfully")
                 else:
                     result["error"] = "EXIF GPS DMS values could not be parsed"
+                    logger.warning("[EXIF] GPS DMS conversion failed — values could not be parsed")
             else:
                 result["error"] = "EXIF GPS tags present but lat/lon missing"
+                logger.warning("[EXIF] GPSInfo block present but GPSLatitude/GPSLongitude tags missing")
         else:
             result["error"] = "No GPSInfo tag found in EXIF"
+            logger.debug("[EXIF] No GPSInfo tag in EXIF — image has no embedded GPS data")
 
     except ImportError:
         result["error"] = "Pillow library not installed — cannot parse EXIF"
+        logger.error("[EXIF] Pillow library not installed — cannot parse EXIF")
     except Exception as exc:
         result["error"] = f"EXIF parsing error: {str(exc)}"
+        logger.error("[EXIF] Error during EXIF parsing: %s", exc)
 
+    logger.info("[EXIF] Extraction complete — has_gps=%s, error=%r", result["has_gps"], result["error"])
     return result
 
 
